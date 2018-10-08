@@ -60,7 +60,7 @@ export class EventService {
             throw(`PanCloudError() ${res.status} ${res.statusText}`);
     };
 
-   public async poll(timeout: number): Promise <any> {
+    public async poll(timeout: number): Promise <any> {
         let url: string = `${this.es_base_url}/${this.channel_id}/poll`;
         let auth_token = this.auth_token;
         let res = await fetch(url, {
@@ -81,5 +81,35 @@ export class EventService {
         } catch (exception) {
             throw (`PanCloudError() Invalid JSON: ${exception}`);
         }
-   };
+    };
+
+    public async ack(): Promise <void> {
+        let url: string = `${this.es_base_url}/${this.channel_id}/ack`;
+        let auth_token = this.auth_token;
+        let res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + auth_token
+            }
+        });
+
+        if (res.ok === false)
+            throw(`PanCloudError() ${res.status} ${res.statusText}`);
+    };
+
+    public async nack(): Promise <void> {
+        let url: string = `${this.es_base_url}/${this.channel_id}/nack`;
+        let auth_token = this.auth_token;
+        let res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + auth_token
+            }
+        });
+
+        if (res.ok === false)
+            throw(`PanCloudError() ${res.status} ${res.statusText}`);
+    };
 }
