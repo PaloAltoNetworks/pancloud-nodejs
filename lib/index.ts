@@ -1,3 +1,4 @@
-import { Credentials } from './credentials'
-import { LoggingService } from './loggingservice'
-export { Credentials, LoggingService }
+export { Credentials } from './credentials'
+export { LoggingService } from './loggingservice'
+export { EventService, esFilterBuilderEntry, esFilter } from './eventservice'
+export { ApplicationFrameworkError } from './error'
