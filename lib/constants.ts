@@ -23,9 +23,7 @@ interface constants {
         PANW_URLSUM: string,
         PANW_USERID: string,
         PANW_ANALYTICS: string,
-        TMS_CONFIG: string,
-        TMS_SYSTEM: string,
-        TMS_THREAT: string,
+        TMS_TRAPS: string
     },
     APPFRERR: string
 }
@@ -55,9 +53,7 @@ export let C = Object.freeze({
         PANW_URLSUM: "panw.urlsum",
         PANW_USERID: "panw.userid",
         PANW_ANALYTICS: "tms.analytics",
-        TMS_CONFIG: "tms.config",
-        TMS_SYSTEM: "tms.system",
-        TMS_THREAT: "tms.threat"
+        TMS_TRAPS: "tms.traps",
     },
     APPFRERR: "ApplicationFrameworkError"
 } as constants)

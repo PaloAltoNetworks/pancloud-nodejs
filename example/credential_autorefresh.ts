@@ -1,7 +1,5 @@
 import { Credentials } from '../lib/credentials'
-const c_id = '<cliet_id>'
-const c_secret = '<client_secret>'
-const r_token = '<refresh_token>'
+import { c_id, c_secret, r_token, a_token } from './secrets'
 
 Credentials.factory(c_id, c_secret, undefined, undefined, r_token).then(
     c => {

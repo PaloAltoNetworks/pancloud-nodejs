@@ -63,3 +63,6 @@ typings/
 # js files
 lib/*js
 example/*js
+
+# project secret
+example/secrets.ts
