@@ -66,3 +66,4 @@ example/*js
 
 # project secret
 example/secrets.ts
+example/sctcbot

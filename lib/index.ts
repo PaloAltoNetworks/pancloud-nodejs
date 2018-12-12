@@ -1,4 +1,4 @@
 export { Credentials } from './credentials'
 export { LoggingService } from './loggingservice'
-export { EventService, esFilterBuilderEntry, esFilter } from './eventservice'
+export { EventService, esFilterBuilderCfg, esFilterCfg, esFilter } from './eventservice'
 export { ApplicationFrameworkError } from './error'

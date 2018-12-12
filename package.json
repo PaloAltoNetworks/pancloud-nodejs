@@ -25,6 +25,7 @@
   },
   "homepage": "https://github.com/PaloAltoNetworks/pancloud-nodejs#readme",
   "dependencies": {
+    "@google-cloud/storage": "^2.3.1",
     "@types/node-fetch": "^2.1.4",
     "node-fetch": "^2.3.0"
   }

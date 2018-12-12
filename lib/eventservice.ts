@@ -1,13 +1,31 @@
-import * as fetch from 'node-fetch'
 import { Credentials } from './credentials'
-import { C } from './constants'
+import { PATH, LOGTYPE, isKnownLogType } from './constants'
+import { coreClass, emittedEvent } from './core'
 import { ApplicationFrameworkError } from './error'
-import { EventEmitter } from 'events';
-import { setTimeout, clearTimeout } from 'timers';
+import { setTimeout, clearTimeout } from 'timers'
+export { emittedEvent }
 
-const MSLEEP = 200; // milliseconds to sleep between non-empty pools
-const EEVENT = 'polldata'
-let DEFAULT_PO: pollOptions = { ack: false, pollTimeout: 1000, fetchTimeout: 45000 }
+const MSLEEP = 200; // milliseconds to sleep between non-empty polls
+const esPath: PATH = "event-service/v1/channels"
+let DEFAULT_PO: esPollOptions = { ack: false, pollTimeout: 1000, fetchTimeout: 45000 }
+let invalidTables: LOGTYPE[] = ["tms.analytics", "tms.config", "tms.system", "tms.threat"]
+
+interface esEvent {
+    logType: LOGTYPE,
+    event: any[]
+}
+
+function is_esEvent(obj: any): obj is esEvent {
+    if (obj && typeof obj == "object") {
+        if ("logType" in obj && typeof obj.logType == "string" && isKnownLogType(obj.logType)) {
+            if ("event" in obj && typeof obj.event == "object" && obj.event instanceof Array) {
+                return true
+            }
+        }
+    }
+    return false
+}
+
 
 export interface esFilter {
     filters: {
@@ -43,135 +61,67 @@ function is_esFilter(obj: any): obj is esFilter {
     return false
 }
 
-export interface esEvent {
-    logType: string,
-    event: any[]
-}
-
-function is_esEvent(obj: any): obj is esEvent {
-    if (obj && typeof obj == "object") {
-        if ("logType" in obj && typeof obj.logType == "string") {
-            if ("event" in obj && typeof obj.event == "object" && obj.event instanceof Array) {
-                return true
-            }
-        }
-    }
-    return false
-}
-
-export interface pollOptions {
+interface esPollOptions {
     pollTimeout: number,
     fetchTimeout: number,
     ack: boolean
 }
 
-export interface filterOptions {
-    callBack?(e: esEvent): void,
+interface esFilterOptions {
+    eventCallBack?(e: emittedEvent): void,
+    correlationCallBack?(): void, // TODO: define interface for correlation messages
+    pcapCallBack?(): void, // TODO: define interface for pcap messages
     sleep?: number,
-    po?: pollOptions
+    poolOptions?: esPollOptions
 }
 
-export interface esFilterBuilderEntry {
-    table: string,
-    where?: string,
-    timeout?: number,
-    batchSize?: number,
+export interface esFilterCfg {
+    filter: esFilter,
+    filterOptions: esFilterOptions
 }
 
-export class EventService {
-    private cred: Credentials
-    private entryPoint: string
+export interface esFilterBuilderCfg {
+    filter: {
+        table: LOGTYPE,
+        where?: string,
+        timeout?: number,
+        batchSize?: number
+    }[],
+    filterOptions: esFilterOptions,
+    flush?: boolean
+}
+
+export class EventService extends coreClass {
     private filterUrl: string
     private pollUrl: string
     private ackUrl: string
     private nackUrl: string
     private flushUrl: string
-    private popts: pollOptions
+    private popts: esPollOptions
     private ap_sleep: number
-    private emitter: EventEmitter
     private tout: NodeJS.Timeout | undefined
     private polling: boolean
-    private autoRefresh: boolean
-    private fetchHeaders: { [i: string]: string }
+    private eevent: emittedEvent
 
     private constructor(credential: Credentials, entryPoint: string, channelId: string, autoRefresh: boolean) {
-        this.cred = credential
-        this.entryPoint = entryPoint
+        super(credential, entryPoint, autoRefresh)
         this.setChannel(channelId)
         this.popts = DEFAULT_PO
         this.ap_sleep = MSLEEP
-        this.emitter = new EventEmitter()
         this.polling = false
-        this.autoRefresh = autoRefresh
-        this.setFetchHeaders()
-    }
-
-    private setFetchHeaders(): void {
-        this.fetchHeaders = {
-            'Authorization': 'Bearer ' + this.cred.get_access_token(),
-            'Content-Type': 'application/json'
-        }
+        this.eevent = { source: "EventService" }
     }
 
     setChannel(channelId: string): void {
-        this.filterUrl = `${this.entryPoint}/${C.ESPATH}/${channelId}/filters`
-        this.pollUrl = `${this.entryPoint}/${C.ESPATH}/${channelId}/poll`
-        this.ackUrl = `${this.entryPoint}/${C.ESPATH}/${channelId}/ack`
-        this.nackUrl = `${this.entryPoint}/${C.ESPATH}/${channelId}/nack`
-        this.flushUrl = `${this.entryPoint}/${C.ESPATH}/${channelId}/flush`
+        this.filterUrl = `${this.entryPoint}/${esPath}/${channelId}/filters`
+        this.pollUrl = `${this.entryPoint}/${esPath}/${channelId}/poll`
+        this.ackUrl = `${this.entryPoint}/${esPath}/${channelId}/ack`
+        this.nackUrl = `${this.entryPoint}/${esPath}/${channelId}/nack`
+        this.flushUrl = `${this.entryPoint}/${esPath}/${channelId}/flush`
     }
 
     static factory(cred: Credentials, entryPoint: string, autoRefresh = false, channelId = 'EventFilter'): EventService {
         return new EventService(cred, entryPoint, channelId, autoRefresh)
-    }
-
-    async refresh(): Promise<void> {
-        await this.cred.refresh_access_token()
-        this.setFetchHeaders()
-    }
-
-    private async fetchGetWrap(url: string): Promise<fetch.Response> {
-        let r = await fetch.default(url, {
-            headers: this.fetchHeaders
-        })
-        if (r.status == 401 && this.autoRefresh) {
-            await this.cred.refresh_access_token()
-            this.setFetchHeaders()
-            r = await fetch.default(url, {
-                headers: this.fetchHeaders
-            })
-        }
-        return r
-    }
-
-    private async fetchPWrap(url: string, method: string, body?: string): Promise<fetch.Response> {
-        let r = await fetch.default(url, {
-            headers: this.fetchHeaders,
-            method: method,
-            body: body
-        })
-        if (r.status == 401 && this.autoRefresh) {
-            await this.cred.refresh_access_token()
-            this.setFetchHeaders()
-            r = await fetch.default(url, {
-                headers: this.fetchHeaders,
-                method: method,
-                body: body
-            })
-        }
-        return r
-    }
-
-    private async void_P_Operation(url: string, payload?: string, method = "POST"): Promise<void> {
-        let res = await this.fetchPWrap(url, method, payload);
-        if (res.ok) return
-        let r_json: any
-        try {
-            r_json = await res.json()
-        } catch (exception) {
-            throw new Error(`PanCloudError() Invalid JSON: ${exception.message}`)
-        }
-        throw new ApplicationFrameworkError(r_json)
     }
 
     async getFilters(): Promise<esFilter> {
@@ -182,6 +132,7 @@ export class EventService {
         } catch (exception) {
             throw new Error(`PanCloudError() Invalid JSON: ${exception.message}`)
         }
+        this.lastResponse = r_json
         if (!res.ok) {
             throw new ApplicationFrameworkError(r_json)
         }
@@ -191,13 +142,12 @@ export class EventService {
         throw new Error(`PanCloudError() response is not a valid ES Filter: ${JSON.stringify(r_json)}`)
     }
 
-    async setFilters(filter: esFilter, fopts?: filterOptions): Promise<EventService> {
-        this.popts = (fopts && fopts.po) ? fopts.po : DEFAULT_PO
-        this.ap_sleep = (fopts && fopts.sleep) ? fopts.sleep : MSLEEP
-        await this.void_P_Operation(this.filterUrl, JSON.stringify(filter), 'PUT')
-        if (fopts && fopts.callBack) {
-            this.emitter = new EventEmitter()
-            this.emitter.on(EEVENT, fopts.callBack)
+    async setFilters(fcfg: esFilterCfg): Promise<EventService> {
+        this.popts = (fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO
+        this.ap_sleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP
+        await this.void_X_Operation(this.filterUrl, JSON.stringify(fcfg.filter), 'PUT')
+        if (fcfg.filterOptions.eventCallBack || fcfg.filterOptions.pcapCallBack || fcfg.filterOptions.correlationCallBack) {
+            this.newEmitter(fcfg.filterOptions.eventCallBack, fcfg.filterOptions.pcapCallBack, fcfg.filterOptions.correlationCallBack)
             EventService.autoPoll(this)
         } else if (this.tout) {
             clearTimeout(this.tout)
@@ -206,50 +156,56 @@ export class EventService {
         return this
     }
 
-    filterBuilder(entries: esFilterBuilderEntry[], flush = false, fopts?: filterOptions): Promise<EventService> {
-        let f: esFilter = {
-            filters: entries.map(e => {
-                let m: {
-                    [index: string]: {
-                        filter: string,
-                        timeout?: number,
-                        batchSize?: number
+    filterBuilder(fbcfg: esFilterBuilderCfg): Promise<EventService> {
+        if (fbcfg.filter.some(f => invalidTables.includes(f.table))) {
+            throw new Error('PanCloudError() only "tms.traps" is accepted in the EventService')
+        }
+        let fcfg: esFilterCfg = {
+            filter: {
+                filters: fbcfg.filter.map(e => {
+                    let m: {
+                        [index: string]: {
+                            filter: string,
+                            timeout?: number,
+                            batchSize?: number
+                        }
+                    } = {}
+                    m[e.table] = { filter: `select * from \`${e.table}\`` }
+                    if (e.where) {
+                        m[e.table].filter += ` where ${e.where}`
                     }
-                } = {}
-                m[e.table] = { filter: `select * from \`${e.table}\`` }
-                if (e.where) {
-                    m[e.table].filter += ` where ${e.where}`
-                }
-                m[e.table].timeout = e.timeout
-                m[e.table].batchSize = e.batchSize
-                return m
-            }),
+                    m[e.table].timeout = e.timeout
+                    m[e.table].batchSize = e.batchSize
+                    return m
+                })
+            },
+            filterOptions: fbcfg.filterOptions
         }
-        if (flush) {
-            f.flush = true
+        if (fbcfg.flush) {
+            fcfg.filter.flush = true
         }
-        return this.setFilters(f, fopts)
+        return this.setFilters(fcfg)
     }
 
     clearFilter(flush = false): Promise<EventService> {
-        let f: esFilter = { filters: [] }
+        let fcfg: esFilterCfg = { filter: { filters: [] }, filterOptions: {} }
         if (flush) {
-            f.flush = true
+            fcfg.filter.flush = true
         }
         this.pause()
-        return this.setFilters(f)
+        return this.setFilters(fcfg)
     }
 
     async ack(): Promise<void> {
-        return this.void_P_Operation(this.ackUrl)
+        return this.void_X_Operation(this.ackUrl)
     }
 
     async nack(): Promise<void> {
-        return this.void_P_Operation(this.nackUrl)
+        return this.void_X_Operation(this.nackUrl)
     }
 
     async flush(): Promise<void> {
-        return this.void_P_Operation(this.flushUrl)
+        return this.void_X_Operation(this.flushUrl)
     }
 
     async poll(): Promise<esEvent[]> {
@@ -257,13 +213,14 @@ export class EventService {
         if (this.popts.pollTimeout != 1000) {
             body = JSON.stringify({ pollTimeout: this.popts.pollTimeout })
         }
-        let res = await this.fetchPWrap(this.pollUrl, "POST", body);
+        let res = await this.fetchPostWrap(this.pollUrl, body);
         let r_json: any
         try {
             r_json = await res.json()
         } catch (exception) {
             throw new Error(`PanCloudError() Invalid JSON: ${exception.message}`)
         }
+        this.lastResponse = r_json
         if (!res.ok) {
             throw new ApplicationFrameworkError(r_json)
         }
@@ -281,9 +238,18 @@ export class EventService {
     private static async autoPoll(es: EventService): Promise<void> {
         es.polling = true
         es.tout = undefined
-        let e = await es.poll()
+        let e: esEvent[] = []
+        try {
+            e = await es.poll()
+        } catch (err) {
+            console.log(`autoPoll: error ${err.message}`)
+        }
         e.forEach(i => {
-            es.emitter.emit(EEVENT, i)
+            es.eevent.logType = i.logType
+            i.event.forEach(s => {
+                es.eevent.event = s
+                es.emitEvent(es.eevent)
+            })
         })
         if (es.polling) {
             if (e.length) {

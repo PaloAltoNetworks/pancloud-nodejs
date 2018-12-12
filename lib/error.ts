@@ -1,4 +1,5 @@
-import { C } from "./constants"
+import { APPFRERR } from "./constants"
+
 export interface appFerr {
     errorCode: string,
     errorMessage: string
@@ -21,6 +22,6 @@ export class ApplicationFrameworkError extends Error implements appFerr {
             this.errorMessage = JSON.stringify(afError)
             this.errorCode = ''
         }
-        this.name = C.APPFRERR
+        this.name = APPFRERR
     }
 }

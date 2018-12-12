@@ -1,59 +1,33 @@
-interface constants {
-    ENTRYPOINT: {
-        europe: string
-        americas: string
-    },
-    ESPATH: string,
-    T: {
-        PANW_AUTH: string,
-        PANW_CONFIG: string,
-        PANW_DPI: string,
-        PANW_DPI_HIPREPORT: string,
-        PANW_DPI_STATS: string,
-        PANW_GTP: string,
-        PANW_GTPSUM: string,
-        PANW_HIPMATCH: string,
-        PANW_SCTP: string,
-        PANW_SCTPSUM: string,
-        PANW_SYSTEM: string,
-        PANW_THREAT: string,
-        PANW_THSUM: string,
-        PANW_TRAFFIC: string,
-        PANW_TRSUM: string,
-        PANW_URLSUM: string,
-        PANW_USERID: string,
-        PANW_ANALYTICS: string,
-        TMS_TRAPS: string
-    },
-    APPFRERR: string
+const LTYPES = {
+    "panw.auth": "",
+    "panw.config": "",
+    "panw.dpi": "",
+    "panw.dpi_hipreport": "",
+    "panw.dpi_stats": "",
+    "panw.gtp": "",
+    "panw.gtpsum": "",
+    "panw.hipmatch": "",
+    "panw.sctp": "",
+    "panw.sctpsum": "",
+    "panw.system": "",
+    "panw.threat": "",
+    "panw.thsum": "",
+    "panw.traffic": "",
+    "panw.trsum": "",
+    "panw.urlsum": "",
+    "panw.userid": "",
+    "tms.analytics": "",
+    "tms.config": "",
+    "tms.system": "",
+    "tms.threat": "",
+    "tms.traps": ""
 }
 
-export let C = Object.freeze({
-    ENTRYPOINT: {
-        europe: 'https://api.eu.paloaltonetworks.com',
-        americas: 'https://api.us.paloaltonetworks.com'
-    },
-    ESPATH: "event-service/v1/channels",
-    T: {
-        PANW_AUTH: "panw.auth",
-        PANW_CONFIG: "panw.config",
-        PANW_DPI: "panw.dpi",
-        PANW_DPI_HIPREPORT: "panw.dpi_hipreport",
-        PANW_DPI_STATS: "panw.dpi_stats",
-        PANW_GTP: "panw.gtp",
-        PANW_GTPSUM: "panw.gtpsum",
-        PANW_HIPMATCH: "panw.hipmatch",
-        PANW_SCTP: "panw.sctp",
-        PANW_SCTPSUM: "panw.sctpsum",
-        PANW_SYSTEM: "panw.system",
-        PANW_THREAT: "panw.threat",
-        PANW_THSUM: "panw.thsum",
-        PANW_TRAFFIC: "panw.traffic",
-        PANW_TRSUM: "panw.trsum",
-        PANW_URLSUM: "panw.urlsum",
-        PANW_USERID: "panw.userid",
-        PANW_ANALYTICS: "tms.analytics",
-        TMS_TRAPS: "tms.traps",
-    },
-    APPFRERR: "ApplicationFrameworkError"
-} as constants)
+export type ENTRYPOINT = 'https://api.eu.paloaltonetworks.com' | 'https://api.us.paloaltonetworks.com'
+export type PATH = "event-service/v1/channels" | "logging-service/v1/queries"
+export type LOGTYPE = keyof typeof LTYPES
+export const APPFRERR = "ApplicationFrameworkError"
+
+export function isKnownLogType(t: string): t is LOGTYPE {
+    return LTYPES.hasOwnProperty(t)
+}

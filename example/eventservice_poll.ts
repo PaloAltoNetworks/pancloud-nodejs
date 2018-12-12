@@ -1,17 +1,20 @@
 import { Credentials } from '../lib/credentials'
-import { EventService, esFilter } from '../lib/eventservice'
-import { C } from '../lib/constants'
+import { EventService } from '../lib/eventservice'
+import { ENTRYPOINT, APPFRERR } from '../lib/constants'
 import { appFerr } from '../lib/error'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
+const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
+
 Credentials.factory(c_id, c_secret, undefined, a_token, r_token).then(
-    c => EventService.factory(c, C.ENTRYPOINT.americas, true).poll())
+    c => EventService.factory(c, entryPoint, true).poll())
     .then(t => {
         t.forEach(e => {
             console.log(`Event Type: ${e.logType}, Record Count: ${e.event.length}`)
+            console.log(`First Event\n${JSON.stringify(e.event[0])}`)
         })
     }).catch(e => {
-        if (e.name == C.APPFRERR) {
+        if (e.name == APPFRERR) {
             let aferr = e as appFerr
             console.log(`Application Framework Error fields: code = ${aferr.errorCode}, message = ${aferr.errorMessage}`)
         } else {
