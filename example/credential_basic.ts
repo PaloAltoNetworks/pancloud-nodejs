@@ -1,11 +1,16 @@
 import { Credentials } from '../lib/credentials'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
-Credentials.factory(c_id, c_secret, undefined, a_token, r_token).then(
-    c => {
-        console.log(`Access Token: ${c.get_access_token()}\nExpires In: ${c.get_expiration()}`)
-        console.log('... calling refresh token')
-        c.refresh_access_token().then(
-            () => { console.log(`Access Token: ${c.get_access_token()}\nExpires In: ${c.get_expiration()}`) }
-        ).catch(e => console.log(`Ups inner!\n${e.stack}`))
-    }).catch(e => console.log(`Ups outter!\n${e.stack}`))
+async function main(): Promise<void> {
+    let c = await Credentials.factory(c_id, c_secret, undefined, a_token, r_token)
+    let d = new Date(c.get_expiration() * 1000)
+    console.log(`Access Token: ${c.get_access_token()}\nValid until: ${d.toISOString()}`)
+    console.log('... calling refresh token')
+    await c.refresh_access_token()
+    d = new Date(c.get_expiration() * 1000)
+    console.log(`Access Token: ${c.get_access_token()}\nValid until: ${d.toISOString()}`)
+}
+
+main().then().catch(e => {
+    console.log(`General Error\n${e.stack}`)
+})

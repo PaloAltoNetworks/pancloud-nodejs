@@ -82,6 +82,8 @@ export class coreClass {
 
     protected emitEvent(e: emittedEvent) {
         if (this.notifier[EVENT_EVENT]) {
+            if(!(e.event)) {
+            }
             this.emitter.emit(EVENT_EVENT, e)
         }
     }

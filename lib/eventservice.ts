@@ -26,7 +26,6 @@ function is_esEvent(obj: any): obj is esEvent {
     return false
 }
 
-
 export interface esFilter {
     filters: {
         [index: string]: {
