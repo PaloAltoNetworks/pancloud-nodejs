@@ -1,11 +1,7 @@
-import { Credentials } from '../lib/credentials'
-import { LoggingService, lsQuery, jobResult } from '../lib/loggingservice'
-import { ENTRYPOINT, APPFRERR } from '../lib/constants'
-import { appFerr } from '../lib/error'
+import { Credentials, LoggingService, ENTRYPOINT, lsQuery } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
 const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
-let job: jobResult
 let ls: LoggingService
 let now = Math.floor(Date.now() / 1000)
 
@@ -16,10 +12,10 @@ let query: lsQuery = {
     maxWaitTime: 1000
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
     let c = await Credentials.factory(c_id, c_secret, undefined, a_token, r_token)
     ls = await LoggingService.factory(c, entryPoint, true)
-    job = await ls.query(query)
+    let job = await ls.query(query)
     let seq = job.sequenceNo
     if (job.queryStatus == "FINISHED") {
         seq = job.sequenceNo + 1
@@ -31,7 +27,7 @@ async function main(): Promise<void> {
             console.log(`   ... and contains ${job.result.esResult.hits.hits.length} records`)
         }
         try {
-            job = await delayedPoll(seq, 1000)
+            job = await delayedFunc(1000, ls.poll.bind(ls), job.queryId, seq)
         } catch (loopException) { }
         if (job.queryStatus == "FINISHED") {
             seq = job.sequenceNo + 1
@@ -53,24 +49,15 @@ async function main(): Promise<void> {
     console.log(`Job also has been deleted`)
 }
 
-main().then().catch(e => {
-    if (e.name == APPFRERR) {
-        let aferr = e as appFerr
-        console.log(`Application Framework Error fields: code = ${aferr.errorCode}, message = ${aferr.errorMessage}`)
-    } else {
-        console.log(`General Error\n${e.stack}`)
-    }
-})
-
-function delayedPoll(seq: number, delay: number): Promise<jobResult> {
-    return new Promise<jobResult>((ready, notReady) => {
+function delayedFunc<T>(delay: number, f: (...args: any[]) => Promise<T>, ...args: any[]): Promise<T> {
+    return new Promise<T>((ready, notReady) => {
+        let task = f(...args)
         setTimeout(async () => {
             try {
-                job = await ls.poll(job.queryId, seq, 1000)
+                ready(await task)
             } catch (e) {
                 notReady(e)
             }
-            ready(job)
         }, delay)
     })
 }

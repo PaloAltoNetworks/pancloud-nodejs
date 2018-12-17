@@ -1,9 +1,8 @@
 import { Credentials } from './credentials'
-import { PATH, LOGTYPE, isKnownLogType } from './constants'
+import { PATH, LOGTYPE, isKnownLogType, commonLogger } from './common'
 import { coreClass, emittedEvent } from './core'
-import { ApplicationFrameworkError } from './error'
+import { ApplicationFrameworkError, PanCloudError } from './error'
 import { setTimeout, clearTimeout } from 'timers'
-export { emittedEvent }
 
 const MSLEEP = 200; // milliseconds to sleep between non-empty polls
 const esPath: PATH = "event-service/v1/channels"
@@ -101,9 +100,10 @@ export class EventService extends coreClass {
     private tout: NodeJS.Timeout | undefined
     private polling: boolean
     private eevent: emittedEvent
+    static className = "EventService"
 
-    private constructor(credential: Credentials, entryPoint: string, channelId: string, autoRefresh: boolean) {
-        super(credential, entryPoint, autoRefresh)
+    private constructor(credential: Credentials, entryPoint: string, channelId: string, autoRefresh: boolean, allowDup?:boolean) {
+        super(credential, entryPoint, autoRefresh, allowDup)
         this.setChannel(channelId)
         this.popts = DEFAULT_PO
         this.ap_sleep = MSLEEP
@@ -119,8 +119,8 @@ export class EventService extends coreClass {
         this.flushUrl = `${this.entryPoint}/${esPath}/${channelId}/flush`
     }
 
-    static factory(cred: Credentials, entryPoint: string, autoRefresh = false, channelId = 'EventFilter'): EventService {
-        return new EventService(cred, entryPoint, channelId, autoRefresh)
+    static factory(cred: Credentials, entryPoint: string, autoRefresh = false, channelId = 'EventFilter', allowDup?:boolean): EventService {
+        return new EventService(cred, entryPoint, channelId, autoRefresh, allowDup)
     }
 
     async getFilters(): Promise<esFilter> {
@@ -129,16 +129,16 @@ export class EventService extends coreClass {
         try {
             r_json = await res.json()
         } catch (exception) {
-            throw new Error(`PanCloudError() Invalid JSON: ${exception.message}`)
+            throw new PanCloudError(EventService, 'PARSER', `Invalid JSON: ${exception.message}`)
         }
         this.lastResponse = r_json
         if (!res.ok) {
-            throw new ApplicationFrameworkError(r_json)
+            throw new ApplicationFrameworkError(EventService, r_json)
         }
         if (is_esFilter(r_json)) {
             return r_json
         }
-        throw new Error(`PanCloudError() response is not a valid ES Filter: ${JSON.stringify(r_json)}`)
+        throw new PanCloudError(EventService, 'PARSER', `response is not a valid ES Filter: ${JSON.stringify(r_json)}`)
     }
 
     async setFilters(fcfg: esFilterCfg): Promise<EventService> {
@@ -157,7 +157,7 @@ export class EventService extends coreClass {
 
     filterBuilder(fbcfg: esFilterBuilderCfg): Promise<EventService> {
         if (fbcfg.filter.some(f => invalidTables.includes(f.table))) {
-            throw new Error('PanCloudError() only "tms.traps" is accepted in the EventService')
+            throw new PanCloudError(EventService, 'CONFIG', 'PanCloudError() only "tms.traps" is accepted in the EventService')
         }
         let fcfg: esFilterCfg = {
             filter: {
@@ -212,16 +212,16 @@ export class EventService extends coreClass {
         if (this.popts.pollTimeout != 1000) {
             body = JSON.stringify({ pollTimeout: this.popts.pollTimeout })
         }
-        let res = await this.fetchPostWrap(this.pollUrl, body);
+        let res = await this.fetchPostWrap(this.pollUrl, body, this.popts.fetchTimeout);
         let r_json: any
         try {
             r_json = await res.json()
         } catch (exception) {
-            throw new Error(`PanCloudError() Invalid JSON: ${exception.message}`)
+            throw new PanCloudError(EventService, 'PARSER', `Invalid JSON: ${exception.message}`)
         }
         this.lastResponse = r_json
         if (!res.ok) {
-            throw new ApplicationFrameworkError(r_json)
+            throw new ApplicationFrameworkError(EventService, r_json)
         }
         if (r_json && typeof r_json == "object" && r_json instanceof Array) {
             if (r_json.every(e => is_esEvent(e))) {
@@ -231,7 +231,7 @@ export class EventService extends coreClass {
                 return r_json as esEvent[]
             }
         }
-        throw new Error("PanCloudError() response is not a valid ES Event array")
+        throw new PanCloudError(EventService, 'PARSER', 'Response is not a valid ES Event array')
     }
 
     private static async autoPoll(es: EventService): Promise<void> {
@@ -240,16 +240,16 @@ export class EventService extends coreClass {
         let e: esEvent[] = []
         try {
             e = await es.poll()
-        } catch (err) {
-            console.log(`autoPoll: error ${err.message}`)
-        }
-        e.forEach(i => {
-            es.eevent.logType = i.logType
-            i.event.forEach(s => {
-                es.eevent.event = s
-                es.emitEvent(es.eevent)
+            e.forEach(i => {
+                es.eevent.logType = i.logType
+                i.event.forEach(s => {
+                    es.eevent.event = s
+                    es.emitEvent(es.eevent)
+                })
             })
-        })
+        } catch (err) {
+            commonLogger.error(PanCloudError.fromError(EventService, err))
+        }
         if (es.polling) {
             if (e.length) {
                 setImmediate(EventService.autoPoll, es)

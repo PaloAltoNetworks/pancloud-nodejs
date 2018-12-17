@@ -1,4 +1,6 @@
 import fetch from 'node-fetch';
+import { PanCloudError } from './error'
+import { commonLogger } from './common'
 
 // This interface represents AppFramework token data
 interface appFrameworkTokens {
@@ -19,76 +21,6 @@ const IDP_TOKEN_URL: string = 'https://api.paloaltonetworks.com/api/oauth2/Reque
 const IDP_REVOKE_URL: string = 'https://api.paloaltonetworks.com/api/oauth2/RevokeToken'
 const IDP_BASE_URL: string = 'https://identity.paloaltonetworks.com/as/authorization.oauth2'
 
-async function fetch_tokens(
-    client_id: string,
-    client_secret: string,
-    code: string,
-    idp_token_url: string,
-    redirect_uri: string): Promise<appFrameworkTokens> {
-    let res = await fetch(idp_token_url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "redirect_uri": redirect_uri,
-            "grant_type": "authorization_code",
-            "code": code
-        })
-    })
-    if (!res.ok) {
-        throw new Error(`Credentials() ${res.status} ${res.statusText}`)
-    }
-    let r_json: any
-    try {
-        r_json = await res.json()
-    } catch (exception) {
-        throw new Error(`Credentials() Invalid JSON response: ${exception.message}`)
-    }
-    if (isAppFramToken(r_json)) {
-        console.log('Credentials(): Authorization token successfully retrieved')
-        return r_json
-    }
-    throw new Error(`Credentials(): Unparseable response received: "${JSON.stringify(r_json)}"`)
-}
-
-async function refresh_tokens(
-    client_id: string,
-    client_secret: string,
-    refresh_token: string,
-    idp_token_url: string): Promise<appFrameworkTokens> {
-    let res = await fetch(idp_token_url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "refresh_token": refresh_token,
-            "grant_type": "refresh_token"
-        })
-    })
-    if (!res.ok) {
-        throw new Error(`Credentials() ${res.status} ${res.statusText}`)
-    }
-    let r_json: any
-    try {
-        r_json = await res.json()
-    } catch (exception) {
-        throw new Error(`Credentials() Invalid JSON response: ${exception.message}`)
-    }
-    if (isAppFramToken(r_json)) {
-        console.log('Credentials(): Authorization token successfully retrieved')
-        return r_json
-    }
-    throw new Error(`Credentials(): Unparseable response received: "${JSON.stringify(r_json)}"`)
-}
-
 export class Credentials {
     private access_token: string
     private refresh_token: string
@@ -96,7 +28,7 @@ export class Credentials {
     private client_secret: string
     private idp_token_url: string
     private valid_until: number
-    // TODO: region, instance_id, redirect_uri, scope, token_revoke_url, base_url, etc
+    static className = "Credentials"
 
     private constructor(
         client_id: string, client_secret: string,
@@ -117,7 +49,7 @@ export class Credentials {
         code?: string,
         redirect_uri?: string): Promise<Credentials> {
         if (!(refresh_token || code)) {
-            throw new Error('PanCloudError() Invalid Credentials (code or refresh token missing)')
+            throw new PanCloudError(Credentials, 'CONFIG', 'Invalid Credentials (code or refresh token missing)')
         }
         if (refresh_token && access_token) {
             if (!valid_until) valid_until = Math.floor(Date.now() / 1000)
@@ -127,25 +59,95 @@ export class Credentials {
         let r_token: string
         if (refresh_token) {
             r_token = refresh_token
-            tk = await refresh_tokens(client_id, client_secret, refresh_token, idp_token_url)
+            tk = await Credentials.refresh_tokens(client_id, client_secret, refresh_token, idp_token_url)
             if (tk.refresh_token) {
                 r_token = tk.refresh_token
             }
         } else if (code !== undefined && redirect_uri !== undefined) {
-            tk = await fetch_tokens(client_id, client_secret, code, idp_token_url, redirect_uri)
+            tk = await Credentials.fetch_tokens(client_id, client_secret, code, idp_token_url, redirect_uri)
             if (tk.refresh_token) {
                 r_token = tk.refresh_token
             } else {
-                throw new Error('PanCloudError() missing refresh_token in the response')
+                throw new PanCloudError(Credentials, 'IDENTITY', 'Missing refresh_token in the response')
             }
         } else {
-            throw new Error('PanCloudError() Invalid Credentials (code or redirect_uri missing)')
+            throw new PanCloudError(Credentials, 'CONFIG', 'Invalid Credentials (code or redirect_uri missing)')
         }
         let vu = parseInt(tk.expires_in)
         vu = Math.floor(Date.now() / 1000) + (vu ? vu : 0)
         return new Credentials(client_id, client_secret,
             tk.access_token, r_token, vu,
             idp_token_url)
+    }
+
+    static async fetch_tokens(
+        client_id: string,
+        client_secret: string,
+        code: string,
+        idp_token_url: string,
+        redirect_uri: string): Promise<appFrameworkTokens> {
+        let res = await fetch(idp_token_url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+                "code": code
+            })
+        })
+        if (!res.ok) {
+            throw new PanCloudError(Credentials, 'IDENTITY', `HTTP Error from IDP fetch operation ${res.status} ${res.statusText}`)
+        }
+        let r_json: any
+        try {
+            r_json = await res.json()
+        } catch (exception) {
+            throw new PanCloudError(Credentials, 'PARSER', `Invalid JSON fetch response: ${exception.message}`)
+        }
+        if (isAppFramToken(r_json)) {
+            commonLogger.info(Credentials, 'Authorization token successfully retrieved')
+            return r_json
+        }
+        throw new PanCloudError(Credentials, 'PARSER', `Unparseable response received from IDP fetch operation: "${JSON.stringify(r_json)}"`)
+    }
+
+    static async refresh_tokens(
+        client_id: string,
+        client_secret: string,
+        refresh_token: string,
+        idp_token_url: string): Promise<appFrameworkTokens> {
+        let res = await fetch(idp_token_url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token"
+            })
+        })
+        if (!res.ok) {
+            throw new PanCloudError(Credentials, 'IDENTITY', `HTTP Error from IDP refresh operation ${res.status} ${res.statusText}`)
+        }
+        let r_json: any
+        try {
+            r_json = await res.json()
+        } catch (exception) {
+            throw new PanCloudError(Credentials, 'PARSER', `Invalid JSON refresh response: ${exception.message}`)
+        }
+        if (isAppFramToken(r_json)) {
+            commonLogger.info(Credentials, 'Authorization token successfully retrieved', 'IDENTITY')
+            return r_json
+        }
+        throw new PanCloudError(Credentials, 'PARSER', `Unparseable response received from IDP refresh operation: "${JSON.stringify(r_json)}"`)
     }
 
     public get_access_token(): string {
@@ -157,7 +159,7 @@ export class Credentials {
     }
 
     public async refresh_access_token(): Promise<void> {
-        let tk = await refresh_tokens(this.client_id, this.client_secret, this.refresh_token, this.idp_token_url)
+        let tk = await Credentials.refresh_tokens(this.client_id, this.client_secret, this.refresh_token, this.idp_token_url)
         this.access_token = tk.access_token
         let vu = parseInt(tk.expires_in)
         this.valid_until = Math.floor(Date.now() / 1000) + (vu ? vu : 0)
@@ -168,7 +170,7 @@ export class Credentials {
 
     public async revoke_tokens(): Promise<void> {
         if (!this.refresh_token) {
-            throw new Error(`PanCloudError() Not valid refresh token for revoke op: ${this.refresh_token}`)
+            throw new PanCloudError(Credentials, 'CONFIG', `Not valid refresh token for revoke op: ${this.refresh_token}`)
         }
         let res = await fetch(IDP_REVOKE_URL, {
             method: 'POST',
@@ -184,8 +186,8 @@ export class Credentials {
             })
         })
         if (res.ok && res.size > 0) {
-            console.log('Credentials(): Authorization token successfully revoked');
+            commonLogger.info(Credentials, 'Credentials(): Authorization token successfully revoked', 'IDENTITY');
         }
-        throw new Error(`PanCloudError() ${res.status} ${res.statusText}`)
+        throw new PanCloudError(Credentials, 'IDENTITY', `HTTP Error from IDP refresh operation ${res.status} ${res.statusText}`)
     }
 }

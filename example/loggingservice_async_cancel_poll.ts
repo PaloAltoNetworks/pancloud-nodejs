@@ -17,12 +17,19 @@ let finishFunc: () => void
 export async function main(): Promise<void> {
     let c = await Credentials.factory(c_id, c_secret, undefined, a_token, r_token)
     let ls = await LoggingService.factory(c, entryPoint, true)
-    await new Promise(async (resolve, reject) => {
+    new Promise(async (resolve, reject) => {
         finishFunc = resolve
         try {
             let job = await ls.query(query, receiver, undefined, 45000) // Schedule query 1 and register the receiver
             jobsRunning++
             console.log(`\nSuccessfully scheduled the query id: ${job.queryId} with status: ${job.queryStatus}`)
+            new Promise(resolve => {
+                setTimeout(async () => {
+                    console.log("\nCancelling the query")
+                    await ls.cancelPoll(job.queryId)
+                    resolve()
+                }, 10000)
+            })
         } catch (e) {
             reject(e)
         }

@@ -5,12 +5,15 @@
         "allowJs": true,
         "target": "es2017",
         "module": "commonjs",
-        "lib": [
-            "es2017", "dom"
-        ]
+        "baseUrl": ".",
+        "paths": {
+            "pancloud-nodejs": [
+                "../pancloud-nodejs"
+            ]
+        }
     },
     "include": [
-        "lib/*ts",
-        "example/*ts"
+        "lib/*.ts",
+        "example/*.ts"
     ]
 }

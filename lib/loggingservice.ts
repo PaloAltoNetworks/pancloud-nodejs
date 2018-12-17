@@ -1,9 +1,8 @@
 import { Credentials } from './credentials'
-import { PATH, isKnownLogType, LOGTYPE, APPFRERR } from './constants'
+import { PATH, isKnownLogType, LOGTYPE, commonLogger } from './common'
 import { coreClass, emittedEvent } from './core'
-import { ApplicationFrameworkError } from './error'
-import { setTimeout, clearTimeout } from 'timers';
-export { emittedEvent }
+import { ApplicationFrameworkError, PanCloudError, isSdkError } from './error'
+import { setTimeout } from 'timers';
 
 const MSLEEP = 200; // milliseconds to sleep between non-empty polls
 const lsPath: PATH = "logging-service/v1/queries"
@@ -26,7 +25,7 @@ export interface lsQuery {
     maxWaitTime?: number,
     client?: string,
     clientParameters?: any
-    logType?: LOGTYPE,
+    logType?: LOGTYPE
 }
 
 export interface jobResult {
@@ -79,13 +78,15 @@ export class LoggingService extends coreClass {
     private url: string
     private eevent: emittedEvent
     private ap_sleep: number
-    private jobQueue: { [i: string]: jobEntry }
     private tout: NodeJS.Timeout | undefined
+    private jobQueue: { [i: string]: jobEntry }
     private lastProcElement: number
     private pendingQueries: string[]
+    private fetchTimeout: number | undefined
+    static className = "LoggingService"
 
-    private constructor(credential: Credentials, entryPoint: string, autoRefresh: boolean) {
-        super(credential, entryPoint, autoRefresh)
+    private constructor(credential: Credentials, entryPoint: string, autoRefresh: boolean, allowDup?:boolean) {
+        super(credential, entryPoint, autoRefresh, allowDup)
         this.url = `${this.entryPoint}/${lsPath}`
         this.eevent = { source: 'LoggingService' }
         this.ap_sleep = MSLEEP
@@ -94,30 +95,33 @@ export class LoggingService extends coreClass {
         this.pendingQueries = []
     };
 
-    static factory(cred: Credentials, entryPoint: string, autoRefresh = false): LoggingService {
-        return new LoggingService(cred, entryPoint, autoRefresh)
+    static factory(cred: Credentials, entryPoint: string, autoRefresh = false, allowDup?: boolean): LoggingService {
+        return new LoggingService(cred, entryPoint, autoRefresh, allowDup)
     }
 
-    async query(cfg: lsQuery, eCallBack?: ((e: emittedEvent) => void) | null, sleep = MSLEEP): Promise<jobResult> {
+    async query(cfg: lsQuery, eCallBack?: ((e: emittedEvent) => void) | null, sleep = MSLEEP, fetchTimeout?: number): Promise<jobResult> {
         this.ap_sleep = sleep
-        let res = await this.fetchPostWrap(this.url, JSON.stringify(cfg))
+        this.fetchTimeout = fetchTimeout
+        let res = await this.fetchPostWrap(this.url, JSON.stringify(cfg), fetchTimeout)
         let r_json: any
         try {
             r_json = await res.json()
         } catch (exception) {
-            throw new Error(`PanCloudError() Invalid JSON: ${exception.message}`)
+            throw new PanCloudError(LoggingService, 'PARSER', `Invalid JSON: ${exception.message}`)
         }
         this.lastResponse = r_json
         if (!res.ok) {
-            throw new ApplicationFrameworkError(r_json)
+            throw new ApplicationFrameworkError(LoggingService, r_json)
         }
         if (!(isJobResult(r_json))) {
-            throw new Error(`PanCloudError() response is not a valid LS JOB: ${JSON.stringify(r_json)}`)
+            throw new PanCloudError(LoggingService, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(r_json)}`)
         }
         if (r_json.queryStatus != "JOB_FAILED") {
             if (eCallBack !== undefined) {
                 if (eCallBack) {
-                    this.registerEvenetListener(eCallBack)
+                    if(!this.registerEvenetListener(eCallBack)){
+                        commonLogger.info(LoggingService,"Event receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER")
+                    }
                 }
                 let emptyQueue = this.pendingQueries.length == 0
                 let seq = 0
@@ -142,21 +146,21 @@ export class LoggingService extends coreClass {
         if (maxWaitTime && maxWaitTime > 0) {
             targetUrl += `?maxWaitTime=${maxWaitTime}`
         }
-        let res = await this.fetchGetWrap(targetUrl);
+        let res = await this.fetchGetWrap(targetUrl, this.fetchTimeout);
         let r_json: any
         try {
             r_json = await res.json()
         } catch (exception) {
-            throw new Error(`PanCloudError() Invalid JSON: ${exception.message}`)
+            throw new PanCloudError(LoggingService, 'PARSER', `Invalid JSON: ${exception.message}`)
         }
         this.lastResponse = r_json
         if (!res.ok) {
-            throw new ApplicationFrameworkError(r_json)
+            throw new ApplicationFrameworkError(LoggingService, r_json)
         }
         if (isJobResult(r_json)) {
             return r_json
         }
-        throw new Error(`PanCloudError() response is not a valid LS Job Response: ${JSON.stringify(r_json)}`)
+        throw new PanCloudError(LoggingService, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(r_json)}`)
     }
 
     private static async autoPoll(ls: LoggingService): Promise<void> {
@@ -169,21 +173,22 @@ export class LoggingService extends coreClass {
         let jobR: jobResult = { queryId: "", queryStatus: "RUNNING", result: { esResult: null }, sequenceNo: 0 }
         try {
             jobR = await ls.poll(currentQid, currentJob.sequenceNo, currentJob.maxWaitTime)
-        } catch (err) {
-            if (err.name == APPFRERR) {
-                console.log(`autoPoll: error cancelling query ${currentQid}`)
-                console.log(`autoPoll: error ${err.message}`)
-                ls.cancelPoll(currentQid)
+            if (jobR.result.esResult) {
+                ls.eventEmitter(jobR)
             }
-        }
-        if (jobR.result.esResult) {
-            ls.eventEmitter(jobR)
-        }
-        if (jobR.queryStatus == "FINISHED") {
-            currentJob.sequenceNo++
-        }
-        if (jobR.queryStatus == "JOB_FINISHED") {
-            await ls.emitterCleanup(jobR)
+            if (jobR.queryStatus == "FINISHED") {
+                currentJob.sequenceNo++
+            }
+            if (jobR.queryStatus == "JOB_FINISHED") {
+                await ls.emitterCleanup(jobR)
+            }
+        } catch (err) {
+            if (isSdkError(err)) {
+                commonLogger.alert(LoggingService, `Error triggered. Cancelling query ${currentQid}`, 'AUTOPOLL')
+                ls.cancelPoll(currentQid)
+            } else {
+                commonLogger.error(PanCloudError.fromError(LoggingService, err))
+            }
         }
         if (ls.pendingQueries.length) {
             ls.tout = setTimeout(LoggingService.autoPoll, ls.ap_sleep, ls)
@@ -192,9 +197,13 @@ export class LoggingService extends coreClass {
 
     cancelPoll(qid: string): void {
         if (qid in this.jobQueue) {
+            if (this.pendingQueries.length == 1 && this.tout) {
+                clearTimeout(this.tout)
+                this.tout = undefined
+            }
             delete this.jobQueue[qid]
+            this.pendingQueries = Object.keys(this.jobQueue)
         }
-        this.pendingQueries = Object.keys(this.jobQueue)
     }
 
     public async delete_query(queryId: string): Promise<void> {
@@ -202,7 +211,7 @@ export class LoggingService extends coreClass {
     }
 
     private eventEmitter(j: jobResult): void {
-        if (!(j.result.esResult)) {
+        if (!(j.result.esResult && this.pendingQueries.includes(j.queryId))) {
             return
         }
         let lType: string
@@ -227,8 +236,7 @@ export class LoggingService extends coreClass {
                 this.eevent.event = e._source
                 this.emitEvent(this.eevent)
             } else {
-                // TODO: unified log for the whole SDK
-                console.log(`Discarding event with unknown log type: ${lType}`)
+                commonLogger.alert(LoggingService, `Discarding event with unknown log type: ${lType}`, "EMITTER")
             }
         })
     }

@@ -1,4 +1,6 @@
 export { Credentials } from './credentials'
-export { LoggingService } from './loggingservice'
+export { LoggingService, lsQuery } from './loggingservice'
 export { EventService, esFilterBuilderCfg, esFilterCfg, esFilter } from './eventservice'
-export { ApplicationFrameworkError } from './error'
+export { emittedEvent } from './core'
+export { ApplicationFrameworkError, isSdkError } from './error'
+export { ENTRYPOINT } from './common'

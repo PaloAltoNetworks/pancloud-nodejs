@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Palo Alto Networks Application Framework NodeJS SDK",
   "main": "index.js",
+  "types": "lib/index.ts",
   "directories": {
     "lib": "lib"
   },
@@ -25,7 +26,6 @@
   },
   "homepage": "https://github.com/PaloAltoNetworks/pancloud-nodejs#readme",
   "dependencies": {
-    "@google-cloud/storage": "^2.3.1",
     "@types/node-fetch": "^2.1.4",
     "node-fetch": "^2.3.0"
   }

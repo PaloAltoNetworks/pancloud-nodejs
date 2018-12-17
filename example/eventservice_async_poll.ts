@@ -1,7 +1,4 @@
-import { Credentials } from '../lib/credentials'
-import { EventService, emittedEvent, esFilterBuilderCfg } from '../lib/eventservice'
-import { ENTRYPOINT, APPFRERR } from '../lib/constants'
-import { appFerr } from '../lib/error'
+import { Credentials, EventService, ENTRYPOINT, esFilterBuilderCfg, emittedEvent } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
 const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
@@ -19,9 +16,9 @@ let builderCfg: esFilterBuilderCfg = {
             fetchTimeout: 45000
         }
     }
-};
+}
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
     let c = await Credentials.factory(c_id, c_secret, undefined, a_token, r_token)
     let es = await EventService.factory(c, entryPoint, true)
     await es.filterBuilder(builderCfg)
@@ -33,9 +30,12 @@ async function main(): Promise<void> {
             resolve()
         }, 60000)
     })
-    es.clearFilter(true)
+    await es.clearFilter(true)
     console.log("Cleared the filter and flushed the channel")
 }
+
+let lType = ""
+let eventCounter = 0
 
 function receiver(e: emittedEvent): void {
     if (e.logType && e.logType != lType) {
@@ -50,16 +50,3 @@ function receiver(e: emittedEvent): void {
         process.stdout.write(".")
     }
 }
-
-let lType = ""
-let eventCounter = 0
-
-main().then().catch(e => {
-    if (e.name == APPFRERR) {
-        let aferr = e as appFerr
-        console.log(`Application Framework Error fields: code = ${aferr.errorCode}, message = ${aferr.errorMessage}`)
-    } else {
-        console.log(`General Error\n${e.stack}`)
-    }
-})
-
