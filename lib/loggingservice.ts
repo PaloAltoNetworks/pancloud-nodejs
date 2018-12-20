@@ -85,7 +85,7 @@ export class LoggingService extends coreClass {
     private fetchTimeout: number | undefined
     static className = "LoggingService"
 
-    private constructor(credential: Credentials, entryPoint: string, autoRefresh: boolean, allowDup?:boolean) {
+    private constructor(credential: Credentials, entryPoint: string, autoRefresh: boolean, allowDup?: boolean) {
         super(credential, entryPoint, autoRefresh, allowDup)
         this.url = `${this.entryPoint}/${lsPath}`
         this.eevent = { source: 'LoggingService' }
@@ -119,8 +119,8 @@ export class LoggingService extends coreClass {
         if (r_json.queryStatus != "JOB_FAILED") {
             if (eCallBack !== undefined) {
                 if (eCallBack) {
-                    if(!this.registerEvenetListener(eCallBack)){
-                        commonLogger.info(LoggingService,"Event receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER")
+                    if (!this.registerEvenetListener(eCallBack)) {
+                        commonLogger.info(LoggingService, "Event receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER")
                     }
                 }
                 let emptyQueue = this.pendingQueries.length == 0
@@ -173,9 +173,7 @@ export class LoggingService extends coreClass {
         let jobR: jobResult = { queryId: "", queryStatus: "RUNNING", result: { esResult: null }, sequenceNo: 0 }
         try {
             jobR = await ls.poll(currentQid, currentJob.sequenceNo, currentJob.maxWaitTime)
-            if (jobR.result.esResult) {
-                ls.eventEmitter(jobR)
-            }
+            ls.eventEmitter(jobR)
             if (jobR.queryStatus == "FINISHED") {
                 currentJob.sequenceNo++
             }
@@ -214,31 +212,31 @@ export class LoggingService extends coreClass {
         if (!(j.result.esResult && this.pendingQueries.includes(j.queryId))) {
             return
         }
-        let lType: string
         this.eevent.source = j.queryId
         this.eevent.logType = this.jobQueue[j.queryId].logtype
-        j.result.esResult.hits.hits.forEach(e => {
-            if (!(this.eevent.logType)) {
-                lType = ""
-                knownIndexes.some(p => {
-                    if (e._index.includes(p)) {
-                        lType = p
-                        return true
-                    }
-                    return false
-                })
-                lType += e._type
-                if (isKnownLogType(lType)) {
-                    this.eevent.logType = lType
+        if (!(this.eevent.logType) && j.result.esResult.hits.hits.length > 0) {
+            let lType = ""
+            let firstEntry = j.result.esResult.hits.hits[0]
+            knownIndexes.some(p => {
+                if (firstEntry._index.includes(p)) {
+                    lType = p
+                    return true
                 }
-            }
-            if (this.eevent.logType) {
-                this.eevent.event = e._source
-                this.emitEvent(this.eevent)
+                return false
+            })
+            lType += firstEntry._type
+            if (isKnownLogType(lType)) {
+                this.eevent.logType = lType
             } else {
-                commonLogger.alert(LoggingService, `Discarding event with unknown log type: ${lType}`, "EMITTER")
+                commonLogger.alert(LoggingService, `Discarding event set of unknown log type: ${lType}`, "EMITTER")
+                return
             }
-        })
+        } else {
+            commonLogger.alert(LoggingService, `Discarding empty event set from source without known log type`, "EMITTER")
+            return
+        }
+        this.eevent.event = j.result.esResult.hits.hits
+        this.emitEvent(this.eevent)
     }
 
     private emitterCleanup(j: jobResult): Promise<void> {

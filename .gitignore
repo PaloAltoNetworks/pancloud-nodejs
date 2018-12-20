@@ -67,3 +67,6 @@ example/*js
 # project secret
 example/secrets.ts
 example/node_modules
+
+# types
+types

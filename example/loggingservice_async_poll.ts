@@ -44,11 +44,6 @@ function receiver(e: emittedEvent): void {
         lQid = e.source
         console.log(`\nReceiving: Event Type: ${e.logType} from ${e.source}`)
     }
-    eventCounter++
-    if (eventCounter % 100 == 0) {
-        if (eventCounter % 1000 == 0) {
-            process.stdout.write(`${eventCounter}`)
-        }
-        process.stdout.write(".")
-    }
+    eventCounter += e.event.length
+    process.stdout.write(`${eventCounter}...`)
 }

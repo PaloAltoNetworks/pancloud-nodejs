@@ -12,7 +12,7 @@ type eventTypes = typeof EVENT_EVENT | typeof PCAP_EVENT | typeof CORRELATION_EV
 export interface emittedEvent {
     source: string,
     logType?: LOGTYPE,
-    event?: any
+    event?: any[]
 }
 
 export class coreClass {
@@ -147,15 +147,15 @@ export class coreClass {
     }
 
     protected async fetchPostWrap(url: string, body?: string, timeout?: number): Promise<fetch.Response> {
-        return this.fetchXWrap(url, "POST", body, timeout)
+        return await this.fetchXWrap(url, "POST", body, timeout)
     }
 
     protected async fetchPutWrap(url: string, body?: string, timeout?: number): Promise<fetch.Response> {
-        return this.fetchXWrap(url, "PUT", body, timeout)
+        return await this.fetchXWrap(url, "PUT", body, timeout)
     }
 
     protected async fetchDeleteWrap(url: string, timeout?: number): Promise<fetch.Response> {
-        return this.fetchXWrap(url, "DELETE", undefined, timeout)
+        return await this.fetchXWrap(url, "DELETE", undefined, timeout)
     }
 
     protected async void_X_Operation(url: string, payload?: string, method = "POST"): Promise<void> {

@@ -46,11 +46,10 @@ export async function main(): Promise<void> {
     await new Promise(async (resolve, reject) => {
         finishFunc = resolve
         try {
+            jobsRunning = 2
             let job = await ls.query(query1, receiver, undefined, 45000) // Schedule query 1 and register the receiver
-            jobsRunning++
             console.log(`Successfully scheduled the query id: ${job.queryId} with status: ${job.queryStatus}`)
-            job = await ls.query(query2, null, undefined, 45000) // Schedule query 2 with no additional registration
-            jobsRunning++
+            job = await ls.query(query2, receiver, undefined, 45000) // Schedule query 2 with no additional registration
             console.log(`Successfully scheduled the query id: ${job.queryId} with status: ${job.queryStatus}`)
         } catch (e) {
             reject(e)
@@ -86,11 +85,6 @@ function receiver(e: emittedEvent): void {
         lQid = e.source
         console.log(`\nReceiving: Event Type: ${e.logType} from ${e.source}`)
     }
-    eventCounter++
-    if (eventCounter % 100 == 0) {
-        if (eventCounter % 1000 == 0) {
-            process.stdout.write(`${eventCounter}`)
-        }
-        process.stdout.write(".")
-    }
+    eventCounter += e.event.length
+    process.stdout.write(`${eventCounter}...`)
 }

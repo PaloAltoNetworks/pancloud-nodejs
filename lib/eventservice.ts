@@ -102,7 +102,7 @@ export class EventService extends coreClass {
     private eevent: emittedEvent
     static className = "EventService"
 
-    private constructor(credential: Credentials, entryPoint: string, channelId: string, autoRefresh: boolean, allowDup?:boolean) {
+    private constructor(credential: Credentials, entryPoint: string, channelId: string, autoRefresh: boolean, allowDup?: boolean) {
         super(credential, entryPoint, autoRefresh, allowDup)
         this.setChannel(channelId)
         this.popts = DEFAULT_PO
@@ -119,7 +119,7 @@ export class EventService extends coreClass {
         this.flushUrl = `${this.entryPoint}/${esPath}/${channelId}/flush`
     }
 
-    static factory(cred: Credentials, entryPoint: string, autoRefresh = false, channelId = 'EventFilter', allowDup?:boolean): EventService {
+    static factory(cred: Credentials, entryPoint: string, autoRefresh = false, channelId = 'EventFilter', allowDup?: boolean): EventService {
         return new EventService(cred, entryPoint, channelId, autoRefresh, allowDup)
     }
 
@@ -242,10 +242,8 @@ export class EventService extends coreClass {
             e = await es.poll()
             e.forEach(i => {
                 es.eevent.logType = i.logType
-                i.event.forEach(s => {
-                    es.eevent.event = s
-                    es.emitEvent(es.eevent)
-                })
+                es.eevent.event = i.event
+                es.emitEvent(es.eevent)
             })
         } catch (err) {
             commonLogger.error(PanCloudError.fromError(EventService, err))
