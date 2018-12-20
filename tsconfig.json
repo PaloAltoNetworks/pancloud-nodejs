@@ -1,0 +1,20 @@
+{
+    "compilerOptions": {
+        "noImplicitAny": true,
+        "strictNullChecks": true,
+        "declaration": true,
+        "declarationDir": "types",
+        "target": "es2017",
+        "module": "commonjs",
+        "baseUrl": ".",
+        "paths": {
+            "pancloud-nodejs": [
+                "../pancloud-nodejs"
+            ]
+        }
+    },
+    "include": [
+        "lib/*.ts",
+        "example/*.ts"
+    ]
+}

@@ -59,3 +59,14 @@ typings/
 
 # next.js build output
 .next
+
+# js files
+lib/*js
+example/*js
+
+# project secret
+example/secrets.ts
+example/node_modules
+
+# types
+types
