@@ -1,4 +1,4 @@
-import { Credentials, EventService, esFilterBuilderCfg, LoggingService, ENTRYPOINT, lsQuery, emittedEvent } from 'pancloud-nodejs'
+import { Credentials, EventService, esFilterBuilderCfg, LoggingService, ENTRYPOINT, lsQuery, emittedEvent, logLevel } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
 const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
@@ -38,11 +38,24 @@ let finishFunc: () => void
 let jobsRunning = 0
 
 export async function main(): Promise<void> {
-    let c = await Credentials.factory(c_id, c_secret, undefined, a_token, r_token)
-    es = await EventService.factory(c, entryPoint, true)
+    let c = await Credentials.factory({
+        client_id: c_id,
+        client_secret: c_secret,
+        refresh_token: r_token,
+        access_token: a_token
+    })
+    es = await EventService.factory({
+        credential: c,
+        entryPoint: entryPoint,
+        level: logLevel.DEBUG
+    })
     await es.filterBuilder(builderCfg)
     console.log("Successfully started the Event Service notifier")
-    let ls = await LoggingService.factory(c, entryPoint, true)
+    let ls = await LoggingService.factory({
+        credential: c,
+        entryPoint: entryPoint,
+        level: logLevel.DEBUG
+    })
     await new Promise(async (resolve, reject) => {
         finishFunc = resolve
         try {

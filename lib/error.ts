@@ -20,7 +20,7 @@ interface sdkErrorObj {
     name: string
 }
 
-export function isSdkError(e: any): e is sdkErrorObj {
+export function isSdkError(e: any): e is sdkErr {
     return e &&
         e.getErrorCode && typeof e.getErrorCode == "function" &&
         e.getErrorMessage && typeof e.getErrorMessage == "function" &&

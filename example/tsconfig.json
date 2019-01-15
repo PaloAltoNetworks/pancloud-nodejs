@@ -2,13 +2,11 @@
     "compilerOptions": {
         "noImplicitAny": true,
         "strictNullChecks": true,
-        "declaration": true,
         "target": "es2017",
         "module": "commonjs",
-        "baseUrl": ".",
-        "outDir": "dist"
+        "baseUrl": "../.."
     },
     "include": [
-        "lib/*.ts"
+        "*.ts"
     ]
 }

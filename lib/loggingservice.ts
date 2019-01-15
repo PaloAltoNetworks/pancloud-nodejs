@@ -1,6 +1,6 @@
 import { Credentials } from './credentials'
-import { PATH, isKnownLogType, LOGTYPE, commonLogger } from './common'
-import { coreClass, emittedEvent } from './core'
+import { PATH, isKnownLogType, LOGTYPE, commonLogger, logLevel } from './common'
+import { coreClass, emittedEvent, coreOptions } from './core'
 import { ApplicationFrameworkError, PanCloudError, isSdkError } from './error'
 import { setTimeout } from 'timers';
 
@@ -85,8 +85,8 @@ export class LoggingService extends coreClass {
     private fetchTimeout: number | undefined
     static className = "LoggingService"
 
-    private constructor(credential: Credentials, entryPoint: string, autoRefresh: boolean, allowDup?: boolean) {
-        super(credential, entryPoint, autoRefresh, allowDup)
+    private constructor(ops: coreOptions) {
+        super(ops)
         this.url = `${this.entryPoint}/${lsPath}`
         this.eevent = { source: 'LoggingService' }
         this.ap_sleep = MSLEEP
@@ -95,24 +95,16 @@ export class LoggingService extends coreClass {
         this.pendingQueries = []
     };
 
-    static factory(cred: Credentials, entryPoint: string, autoRefresh = false, allowDup?: boolean): LoggingService {
-        return new LoggingService(cred, entryPoint, autoRefresh, allowDup)
+    static factory(ops: coreOptions): LoggingService {
+        return new LoggingService(ops)
     }
 
     async query(cfg: lsQuery, eCallBack?: ((e: emittedEvent) => void) | null, sleep = MSLEEP, fetchTimeout?: number): Promise<jobResult> {
         this.ap_sleep = sleep
         this.fetchTimeout = fetchTimeout
-        let res = await this.fetchPostWrap(this.url, JSON.stringify(cfg), fetchTimeout)
-        let r_json: any
-        try {
-            r_json = await res.json()
-        } catch (exception) {
-            throw new PanCloudError(LoggingService, 'PARSER', `Invalid JSON: ${exception.message}`)
-        }
+        let cfgStr = JSON.stringify(cfg)
+        let r_json = await this.fetchPostWrap(this.url, cfgStr, fetchTimeout)
         this.lastResponse = r_json
-        if (!res.ok) {
-            throw new ApplicationFrameworkError(LoggingService, r_json)
-        }
         if (!(isJobResult(r_json))) {
             throw new PanCloudError(LoggingService, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(r_json)}`)
         }
@@ -146,17 +138,8 @@ export class LoggingService extends coreClass {
         if (maxWaitTime && maxWaitTime > 0) {
             targetUrl += `?maxWaitTime=${maxWaitTime}`
         }
-        let res = await this.fetchGetWrap(targetUrl, this.fetchTimeout);
-        let r_json: any
-        try {
-            r_json = await res.json()
-        } catch (exception) {
-            throw new PanCloudError(LoggingService, 'PARSER', `Invalid JSON: ${exception.message}`)
-        }
+        let r_json = await this.fetchGetWrap(targetUrl, this.fetchTimeout);
         this.lastResponse = r_json
-        if (!res.ok) {
-            throw new ApplicationFrameworkError(LoggingService, r_json)
-        }
         if (isJobResult(r_json)) {
             return r_json
         }
@@ -184,6 +167,7 @@ export class LoggingService extends coreClass {
             if (isSdkError(err)) {
                 commonLogger.alert(LoggingService, `Error triggered. Cancelling query ${currentQid}`, 'AUTOPOLL')
                 ls.cancelPoll(currentQid)
+                ls.emitEvent({ source: currentQid })
             } else {
                 commonLogger.error(PanCloudError.fromError(LoggingService, err))
             }
@@ -235,7 +219,7 @@ export class LoggingService extends coreClass {
             commonLogger.alert(LoggingService, `Discarding empty event set from source without known log type`, "EMITTER")
             return
         }
-        this.eevent.event = j.result.esResult.hits.hits
+        this.eevent.event = j.result.esResult.hits.hits.map(e => e._source)
         this.emitEvent(this.eevent)
     }
 

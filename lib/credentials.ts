@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
 import { PanCloudError } from './error'
-import { commonLogger } from './common'
+import { commonLogger, retrier } from './common'
 
 // This interface represents AppFramework token data
 interface appFrameworkTokens {
@@ -15,11 +15,19 @@ function isAppFramToken(obj: any): obj is appFrameworkTokens {
         (obj.refresh_tokens === undefined || typeof obj.refresh_tokens == 'string'))
 }
 
-// constant URLs, can be overridden
-
 const IDP_TOKEN_URL: string = 'https://api.paloaltonetworks.com/api/oauth2/RequestToken'
 const IDP_REVOKE_URL: string = 'https://api.paloaltonetworks.com/api/oauth2/RevokeToken'
 const IDP_BASE_URL: string = 'https://identity.paloaltonetworks.com/as/authorization.oauth2'
+
+export interface credOptions {
+    client_id: string,
+    client_secret: string,
+    access_token?: string,
+    refresh_token?: string,
+    idp_token_url?: string,
+    redirect_uri?: string,
+    code?: string,
+}
 
 export class Credentials {
     private access_token: string
@@ -32,39 +40,51 @@ export class Credentials {
 
     private constructor(
         client_id: string, client_secret: string,
-        access_token: string, refresh_token: string, valid_until: number,
+        access_token: string, refresh_token: string,
         idp_token_url: string) {
         this.client_id = client_id
         this.client_secret = client_secret
         this.access_token = access_token
         this.refresh_token = refresh_token
-        this.valid_until = valid_until
+        this.valid_until = Credentials.expExtractor(access_token)
         this.idp_token_url = idp_token_url
     }
 
-    public static async factory(
-        client_id: string, client_secret: string,
-        idp_token_url = IDP_TOKEN_URL,
-        access_token?: string, refresh_token?: string, valid_until?: number,
-        code?: string,
-        redirect_uri?: string): Promise<Credentials> {
-        if (!(refresh_token || code)) {
+    private static expExtractor(jwt: string): number {
+        let jwtParts = jwt.split('.')
+        if (jwtParts.length != 3) { throw new PanCloudError(Credentials, 'CONFIG', 'invalid JWT Token') }
+        let claim: any
+        let exp: number
+        try {
+            claim = JSON.parse(Buffer.from(jwtParts[1], 'base64').toString())
+            exp = Number.parseInt(claim.exp, 10)
+        } catch (e) {
+            throw PanCloudError.fromError(Credentials, e)
+        }
+        return exp
+    }
+
+    public static async factory(opt: credOptions): Promise<Credentials> {
+        if (!opt.idp_token_url) { opt.idp_token_url = IDP_TOKEN_URL }
+        if (!(opt.refresh_token || opt.code)) {
             throw new PanCloudError(Credentials, 'CONFIG', 'Invalid Credentials (code or refresh token missing)')
         }
-        if (refresh_token && access_token) {
-            if (!valid_until) valid_until = Math.floor(Date.now() / 1000)
-            return new Credentials(client_id, client_secret, access_token, refresh_token, valid_until, idp_token_url)
+        if (opt.refresh_token && opt.access_token) {
+            return new Credentials(
+                opt.client_id, opt.client_secret,
+                opt.access_token, opt.refresh_token,
+                opt.idp_token_url)
         }
         let tk: appFrameworkTokens
         let r_token: string
-        if (refresh_token) {
-            r_token = refresh_token
-            tk = await Credentials.refresh_tokens(client_id, client_secret, refresh_token, idp_token_url)
+        if (opt.refresh_token) {
+            r_token = opt.refresh_token
+            tk = await Credentials.refresh_tokens(opt.client_id, opt.client_secret, opt.refresh_token, opt.idp_token_url)
             if (tk.refresh_token) {
                 r_token = tk.refresh_token
             }
-        } else if (code !== undefined && redirect_uri !== undefined) {
-            tk = await Credentials.fetch_tokens(client_id, client_secret, code, idp_token_url, redirect_uri)
+        } else if (opt.code !== undefined && opt.redirect_uri !== undefined) {
+            tk = await Credentials.fetch_tokens(opt.client_id, opt.client_secret, opt.code, opt.idp_token_url, opt.redirect_uri)
             if (tk.refresh_token) {
                 r_token = tk.refresh_token
             } else {
@@ -75,9 +95,9 @@ export class Credentials {
         }
         let vu = parseInt(tk.expires_in)
         vu = Math.floor(Date.now() / 1000) + (vu ? vu : 0)
-        return new Credentials(client_id, client_secret,
-            tk.access_token, r_token, vu,
-            idp_token_url)
+        return new Credentials(opt.client_id, opt.client_secret,
+            tk.access_token, r_token,
+            opt.idp_token_url)
     }
 
     static async fetch_tokens(
@@ -86,7 +106,7 @@ export class Credentials {
         code: string,
         idp_token_url: string,
         redirect_uri: string): Promise<appFrameworkTokens> {
-        let res = await fetch(idp_token_url, {
+        let res = await retrier(Credentials, undefined, undefined, fetch, idp_token_url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -121,7 +141,7 @@ export class Credentials {
         client_secret: string,
         refresh_token: string,
         idp_token_url: string): Promise<appFrameworkTokens> {
-        let res = await fetch(idp_token_url, {
+        let res = await retrier(Credentials, undefined, undefined, fetch, idp_token_url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -132,7 +152,8 @@ export class Credentials {
                 "client_secret": client_secret,
                 "refresh_token": refresh_token,
                 "grant_type": "refresh_token"
-            })
+            }),
+            timeout: 30000
         })
         if (!res.ok) {
             throw new PanCloudError(Credentials, 'IDENTITY', `HTTP Error from IDP refresh operation ${res.status} ${res.statusText}`)
@@ -148,6 +169,19 @@ export class Credentials {
             return r_json
         }
         throw new PanCloudError(Credentials, 'PARSER', `Unparseable response received from IDP refresh operation: "${JSON.stringify(r_json)}"`)
+    }
+
+    public async autoRefresh(): Promise<boolean> {
+        if (Date.now() + 300000 > this.valid_until * 1000) {
+            try {
+                commonLogger.info(Credentials, 'Attempt to auto-refresh the access token')
+                await this.refresh_access_token()
+                return true
+            } catch {
+                commonLogger.info(Credentials, 'Failed to auto-refresh the access token')
+            }
+        }
+        return false
     }
 
     public get_access_token(): string {

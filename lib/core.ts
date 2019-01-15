@@ -2,7 +2,7 @@ import * as fetch from 'node-fetch'
 import { Credentials } from './credentials'
 import { ApplicationFrameworkError, PanCloudError } from './error'
 import { EventEmitter } from 'events'
-import { LOGTYPE } from './common';
+import { LOGTYPE, commonLogger, logLevel, retrier } from './common';
 
 const EVENT_EVENT = 'EVENT_EVENT'
 const PCAP_EVENT = 'PCAP_EVENT'
@@ -15,24 +15,39 @@ export interface emittedEvent {
     event?: any[]
 }
 
+export interface coreOptions {
+    credential: Credentials,
+    entryPoint: string,
+    autoRefresh?: boolean,
+    allowDup?: boolean,
+    level?: logLevel
+}
+
 export class coreClass {
     protected emitter: EventEmitter
     protected cred: Credentials
     protected entryPoint: string
-    protected autoRefresh: boolean
     protected fetchHeaders: { [i: string]: string }
+    private autoR: boolean
     protected allowDupReceiver: boolean
     private notifier: { [event: string]: boolean }
     lastResponse: any
     static className = "coreClass"
 
-    protected constructor(credential: Credentials, entryPoint: string, autoRefresh: boolean, allowDup = false) {
-        this.cred = credential
-        this.entryPoint = entryPoint
-        this.autoRefresh = autoRefresh
-        this.allowDupReceiver = allowDup
-        this.setFetchHeaders()
+    protected constructor(ops: coreOptions) {
+        this.cred = ops.credential
+        this.entryPoint = ops.entryPoint
+        this.allowDupReceiver = (ops.allowDup == undefined) ? false : ops.allowDup
         this.newEmitter()
+        if (ops.level != undefined && ops.level != logLevel.INFO) {
+            commonLogger.level = ops.level
+        }
+        if (ops.autoRefresh == undefined) {
+            this.autoR = true
+        } else {
+            this.autoR = ops.autoRefresh
+        }
+        this.setFetchHeaders()
     }
 
     private registerListener(event: eventTypes, l: (...args: any[]) => void): boolean {
@@ -95,11 +110,13 @@ export class coreClass {
         }
     }
 
+
     private setFetchHeaders(): void {
         this.fetchHeaders = {
             'Authorization': 'Bearer ' + this.cred.get_access_token(),
             'Content-Type': 'application/json'
         }
+        commonLogger.info(coreClass, 'updated authorization header')
     }
 
     async refresh(): Promise<void> {
@@ -107,25 +124,16 @@ export class coreClass {
         this.setFetchHeaders()
     }
 
-    protected async fetchGetWrap(url: string, timeout?: number): Promise<fetch.Response> {
-        let rinit: fetch.RequestInit = {
-            headers: this.fetchHeaders
+    private async checkAutoRefresh(): Promise<void> {
+        if (this.autoR) {
+            if (await this.cred.autoRefresh()) {
+                this.setFetchHeaders()
+            }
         }
-        if (timeout) {
-            rinit.timeout = timeout
-        }
-        let r = await fetch.default(url, rinit)
-        if (r.status == 401 && this.autoRefresh) {
-            await this.cred.refresh_access_token()
-            this.setFetchHeaders()
-            r = await fetch.default(url, {
-                headers: this.fetchHeaders
-            })
-        }
-        return r
     }
 
-    private async fetchXWrap(url: string, method: string, body?: string, timeout?: number): Promise<fetch.Response> {
+    private async fetchXWrap(url: string, method: string, body?: string, timeout?: number): Promise<any> {
+        await this.checkAutoRefresh()
         let rinit: fetch.RequestInit = {
             headers: this.fetchHeaders,
             method: method
@@ -136,38 +144,44 @@ export class coreClass {
         if (body) {
             rinit.body = body
         }
-        let r = await fetch.default(url, rinit)
-        if (r.status == 401 && this.autoRefresh) {
-            await this.cred.refresh_access_token()
-            this.setFetchHeaders()
-            rinit.headers = this.fetchHeaders
-            r = await fetch.default(url, rinit)
+        commonLogger.debug(coreClass, `fetch operation to ${url}`, method, body)
+        let r = await retrier(coreClass, undefined, undefined, fetch.default, url, rinit)
+        let r_text = await r.text()
+        if (r_text.length == 0) {
+            commonLogger.info(coreClass, 'fetch response is null')
+            return null
         }
-        return r
+        let r_json: any
+        try {
+            r_json = JSON.parse(r_text)
+        } catch (exception) {
+            throw new PanCloudError(coreClass, 'PARSER', `Invalid JSON: ${exception.message}`)
+        }
+        if (!r.ok) {
+            throw new ApplicationFrameworkError(coreClass, r_json)
+        }
+        commonLogger.debug(coreClass, 'fetch response', undefined, r_json)
+        return r_json
     }
 
-    protected async fetchPostWrap(url: string, body?: string, timeout?: number): Promise<fetch.Response> {
+    protected async fetchGetWrap(url: string, timeout?: number): Promise<any> {
+        return await this.fetchXWrap(url, "GET", undefined, timeout)
+    }
+
+    protected async fetchPostWrap(url: string, body?: string, timeout?: number): Promise<any> {
         return await this.fetchXWrap(url, "POST", body, timeout)
     }
 
-    protected async fetchPutWrap(url: string, body?: string, timeout?: number): Promise<fetch.Response> {
+    protected async fetchPutWrap(url: string, body?: string, timeout?: number): Promise<any> {
         return await this.fetchXWrap(url, "PUT", body, timeout)
     }
 
-    protected async fetchDeleteWrap(url: string, timeout?: number): Promise<fetch.Response> {
+    protected async fetchDeleteWrap(url: string, timeout?: number): Promise<any> {
         return await this.fetchXWrap(url, "DELETE", undefined, timeout)
     }
 
     protected async void_X_Operation(url: string, payload?: string, method = "POST"): Promise<void> {
-        let res = await this.fetchXWrap(url, method, payload);
-        if (res.ok) return
-        let r_json: any
-        try {
-            r_json = await res.json()
-        } catch (exception) {
-            throw new PanCloudError(coreClass, "PARSER", `Invalid JSON: ${exception.message}`)
-        }
+        let r_json = await this.fetchXWrap(url, method, payload);
         this.lastResponse = r_json
-        throw new ApplicationFrameworkError(coreClass, r_json)
     }
 }

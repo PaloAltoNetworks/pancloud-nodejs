@@ -1,6 +1,5 @@
-import { Credentials } from './credentials'
 import { PATH, LOGTYPE, isKnownLogType, commonLogger } from './common'
-import { coreClass, emittedEvent } from './core'
+import { coreClass, emittedEvent, coreOptions } from './core'
 import { ApplicationFrameworkError, PanCloudError } from './error'
 import { setTimeout, clearTimeout } from 'timers'
 
@@ -89,6 +88,10 @@ export interface esFilterBuilderCfg {
     flush?: boolean
 }
 
+export interface esOptions {
+    channelId?: string,
+}
+
 export class EventService extends coreClass {
     private filterUrl: string
     private pollUrl: string
@@ -102,9 +105,15 @@ export class EventService extends coreClass {
     private eevent: emittedEvent
     static className = "EventService"
 
-    private constructor(credential: Credentials, entryPoint: string, channelId: string, autoRefresh: boolean, allowDup?: boolean) {
-        super(credential, entryPoint, autoRefresh, allowDup)
-        this.setChannel(channelId)
+    private constructor(ops: esOptions & coreOptions) {
+        super({
+            credential: ops.credential,
+            entryPoint: ops.entryPoint,
+            allowDup: ops.allowDup,
+            level: ops.level
+        })
+        if (!ops.channelId) { ops.channelId = 'EventFilter' }
+        this.setChannel(ops.channelId)
         this.popts = DEFAULT_PO
         this.ap_sleep = MSLEEP
         this.polling = false
@@ -119,22 +128,13 @@ export class EventService extends coreClass {
         this.flushUrl = `${this.entryPoint}/${esPath}/${channelId}/flush`
     }
 
-    static factory(cred: Credentials, entryPoint: string, autoRefresh = false, channelId = 'EventFilter', allowDup?: boolean): EventService {
-        return new EventService(cred, entryPoint, channelId, autoRefresh, allowDup)
+    static factory(esOps: esOptions & coreOptions): EventService {
+        return new EventService(esOps)
     }
 
     async getFilters(): Promise<esFilter> {
-        let res = await this.fetchGetWrap(this.filterUrl);
-        let r_json: any
-        try {
-            r_json = await res.json()
-        } catch (exception) {
-            throw new PanCloudError(EventService, 'PARSER', `Invalid JSON: ${exception.message}`)
-        }
+        let r_json = await this.fetchGetWrap(this.filterUrl);
         this.lastResponse = r_json
-        if (!res.ok) {
-            throw new ApplicationFrameworkError(EventService, r_json)
-        }
         if (is_esFilter(r_json)) {
             return r_json
         }
@@ -208,21 +208,12 @@ export class EventService extends coreClass {
     }
 
     async poll(): Promise<esEvent[]> {
-        let body: string | undefined
+        let body: string = '{}'
         if (this.popts.pollTimeout != 1000) {
             body = JSON.stringify({ pollTimeout: this.popts.pollTimeout })
         }
-        let res = await this.fetchPostWrap(this.pollUrl, body, this.popts.fetchTimeout);
-        let r_json: any
-        try {
-            r_json = await res.json()
-        } catch (exception) {
-            throw new PanCloudError(EventService, 'PARSER', `Invalid JSON: ${exception.message}`)
-        }
+        let r_json = await this.fetchPostWrap(this.pollUrl, body, this.popts.fetchTimeout);
         this.lastResponse = r_json
-        if (!res.ok) {
-            throw new ApplicationFrameworkError(EventService, r_json)
-        }
         if (r_json && typeof r_json == "object" && r_json instanceof Array) {
             if (r_json.every(e => is_esEvent(e))) {
                 if (this.popts.ack) {

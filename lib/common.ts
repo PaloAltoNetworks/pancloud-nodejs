@@ -4,10 +4,19 @@ export interface pancloudClass {
     className: string
 }
 
+export enum logLevel {
+    DEBUG = 0,
+    INFO = 1,
+    ALERT = 2,
+    ERROR = 3,
+}
+
 export interface pancloudLogger {
+    level: logLevel,
     error(e: sdkErr): void,
     alert(source: pancloudClass, message: string, name?: string): void,
-    info(source: pancloudClass, message: string, name?: string): void
+    info(source: pancloudClass, message: string, name?: string): void,
+    debug(source: pancloudClass, message: string, name?: string, payload?: any): void
 }
 
 const LTYPES = {
@@ -43,15 +52,8 @@ export function isKnownLogType(t: string): t is LOGTYPE {
     return LTYPES.hasOwnProperty(t)
 }
 
-enum logLevel {
-    INFO = 0b001,
-    ALERT = 0b010,
-    ERROR = 0b100,
-    TRACE = 0b111
-}
-
 class sdkLogger implements pancloudLogger {
-    private level: logLevel
+    level: logLevel
     private stackTrace: boolean
 
     constructor(level: logLevel, stackTrace = true) {
@@ -61,23 +63,71 @@ class sdkLogger implements pancloudLogger {
 
     error(e: sdkErr): void {
         this.format(e.getSourceClass(),
-            e.name, e.getErrorMessage(),
-            logLevel.ERROR, e.getErrorCode(), e.stack)
+            e.getErrorMessage(), logLevel.ERROR,
+            e.name, e.getErrorCode(), undefined, e.stack)
     }
 
-    alert(source: pancloudClass, message: string, name = ""): void {
-        this.format(source.className, name, message, logLevel.ALERT, "unknown", undefined)
+    alert(source: pancloudClass, message: string, name?: string): void {
+        this.format(source.className, message, logLevel.ALERT, name)
     }
 
-    info(source: pancloudClass, message: string, name = ""): void {
-        this.format(source.className, name, message, logLevel.INFO, "unknown", undefined)
+    info(source: pancloudClass, message: string, name?: string): void {
+        this.format(source.className, message, logLevel.INFO, name)
     }
 
-    private format(source: string, name: string, message: string, level: logLevel, code: string, stack: string | undefined) {
-        if (level && this.level) {
-            console.log(`PANCLOUD - source:${source}, name:${name}, message:${message} code:${code}`)
+    debug(source: pancloudClass, message: string, name?: string, payload?: any): void {
+        this.format(source.className, message, logLevel.DEBUG, name, undefined, payload)
+    }
+
+    private format(source: string, message: string, level: logLevel, name?: string, code?: string, payload?: any, stack?: string) {
+        if (level >= this.level) {
+            let output: { [i: string]: string } = {
+                source,
+                message
+            }
+            let payloadOut = ''
+            if (name) {
+                output['name'] = name
+            }
+            if (code) {
+                output['code'] = code
+            }
+            if (stack) {
+                output['stack'] = stack
+            }
+            if (payload) {
+                if (typeof payload == 'string') {
+                    payloadOut = payload
+                } else {
+                    let jsonText = JSON.stringify(payload)
+                    if (jsonText.length > 256) {
+                        payloadOut = jsonText.substr(0, 256) + ' ...'
+                    } else {
+                        payloadOut = jsonText
+                    }
+
+                }
+            }
+            let finalOutput = `PANCLOUD: ${JSON.stringify(output)}`
+            if (payloadOut != '') {
+                finalOutput += ` payload=${payloadOut}`
+            }
+            switch (level) {
+                case logLevel.ERROR: {
+                    console.error(finalOutput)
+                    break
+                }
+                case logLevel.ALERT:
+                case logLevel.INFO: {
+                    console.info(finalOutput)
+                    break
+                }
+                default: {
+                    console.info(finalOutput)
+                }
+            }
             if (this.stackTrace && stack) {
-                console.log(stack)
+                console.error(stack)
             }
         }
     }
@@ -85,6 +135,28 @@ class sdkLogger implements pancloudLogger {
 
 export let commonLogger: pancloudLogger = new sdkLogger(logLevel.INFO, false)
 
+export function setLogLevel(newLevel: logLevel): void {
+    commonLogger.level = newLevel
+}
+
 export function setLogger(logger: pancloudLogger): void {
     commonLogger = logger
+}
+
+export async function retrier<T, O>(source: pancloudClass, n = 3, delay = 100, handler: (...args: T[]) => Promise<O>, ...params: T[]): Promise<O> {
+    let a = n
+    let lastError: Error | undefined = undefined
+    while (a > 0) {
+        try {
+            return await handler(...params)
+        } catch (e) {
+            commonLogger.info(source, `Failed attempt ${a}`, 'RETRIER')
+            lastError = e
+        }
+        await new Promise((resolve) => {
+            setTimeout(resolve, delay)
+        })
+        a--
+    }
+    throw (lastError) ? lastError : new Error('reties exhausted')
 }
