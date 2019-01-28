@@ -6,9 +6,9 @@ let now = Math.floor(Date.now() / 1000)
 
 let query: lsQuery = {
     query: 'select * from panw.traffic limit 4',
-    startTime: now - 36000,
+    startTime: now - 3600,
     endTime: now,
-    maxWaitTime: 1000,
+    maxWaitTime: 1000
 }
 
 let jobsRunning = 0

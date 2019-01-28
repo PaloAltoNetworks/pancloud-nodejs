@@ -36,7 +36,7 @@ export async function main(): Promise<void> {
                 setTimeout(async () => {
                     console.log("\nCancelling the query")
                     await ls.cancelPoll(job.queryId)
-                    resolve()
+                    setTimeout(resolve, 1000)
                 }, 10000)
             })
         } catch (e) {
