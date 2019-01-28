@@ -84,10 +84,10 @@ function receiver(e: emittedEvent): void {
                     console.log("Paused the Event Service notifier")
                     await es.clearFilter(true)
                     console.log("Cleared the Event Service filter and flushed the channel")
+                    resolve()
                 } catch (e) {
                     reject(e)
                 }
-                resolve()
             }).then(() => {
                 finishFunc()
             })

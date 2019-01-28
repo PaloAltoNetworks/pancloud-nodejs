@@ -1,11 +1,20 @@
 "use strict";
+/**
+ * High level abstraction of the Application Framework Event Service
+ */
 Object.defineProperty(exports, "__esModule", { value: true });
 const common_1 = require("./common");
 const core_1 = require("./core");
 const error_1 = require("./error");
 const timers_1 = require("timers");
-const MSLEEP = 200; // milliseconds to sleep between non-empty polls
+/**
+ * Default amount of milliseconds to wait between ES AutoPoll events
+ */
+const MSLEEP = 200;
 const esPath = "event-service/v1/channels";
+/**
+ * Default Event Server {@link esPollOptions} options
+ */
 let DEFAULT_PO = { ack: false, pollTimeout: 1000, fetchTimeout: 45000 };
 let invalidTables = ["tms.analytics", "tms.config", "tms.system", "tms.threat"];
 function is_esEvent(obj) {
@@ -39,6 +48,10 @@ function is_esFilter(obj) {
     }
     return false;
 }
+/**
+ * High-level class that implements an Application Framework Event Service client. It supports both sync
+ * and async features. Objects of this class must be obtained using the factory static method
+ */
 class EventService extends core_1.coreClass {
     constructor(ops) {
         super({
@@ -47,6 +60,7 @@ class EventService extends core_1.coreClass {
             allowDup: ops.allowDup,
             level: ops.level
         });
+        this.className = "EventService";
         if (!ops.channelId) {
             ops.channelId = 'EventFilter';
         }
@@ -63,17 +77,32 @@ class EventService extends core_1.coreClass {
         this.nackUrl = `${this.entryPoint}/${esPath}/${channelId}/nack`;
         this.flushUrl = `${this.entryPoint}/${esPath}/${channelId}/flush`;
     }
+    /**
+     * Static factory method to instantiate an Event Service object
+     * @param esOps Instantitation configuration object accepting parameters from {@link core.coreOptions} and
+     * {@link esOptions}
+     * @returns an instantiated {@link EventService} object
+     */
     static factory(esOps) {
         return new EventService(esOps);
     }
+    /**
+     * @returns the current Event Service filter configuration
+     */
     async getFilters() {
         let r_json = await this.fetchGetWrap(this.filterUrl);
         this.lastResponse = r_json;
         if (is_esFilter(r_json)) {
             return r_json;
         }
-        throw new error_1.PanCloudError(EventService, 'PARSER', `response is not a valid ES Filter: ${JSON.stringify(r_json)}`);
+        throw new error_1.PanCloudError(this, 'PARSER', `response is not a valid ES Filter: ${JSON.stringify(r_json)}`);
     }
+    /**
+     * Sets a new Event Service configuration
+     * @param fcfg The new service configuration. If the configuration includes a valid callBack handler (currently
+     * only {@link esFilterCfg.filterOptions.eventCallBack} is supported) then the class AutoPoll feature is turned on
+     * @returns a promise to the current Event Service to ease promise chaining
+     */
     async setFilters(fcfg) {
         this.popts = (fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO;
         this.ap_sleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP;
@@ -88,9 +117,15 @@ class EventService extends core_1.coreClass {
         }
         return this;
     }
+    /**
+     * Convenience function to set a valid {@link esFilterCfg} configuration in the Event Service using a
+     * description object
+     * @param fbcfg The filter description object
+     * @returns a promise to the current Event Service to ease promise chaining
+     */
     filterBuilder(fbcfg) {
         if (fbcfg.filter.some(f => invalidTables.includes(f.table))) {
-            throw new error_1.PanCloudError(EventService, 'CONFIG', 'PanCloudError() only "tms.traps" is accepted in the EventService');
+            throw new error_1.PanCloudError(this, 'CONFIG', 'PanCloudError() only "tms.traps" is accepted in the EventService');
         }
         let fcfg = {
             filter: {
@@ -112,6 +147,11 @@ class EventService extends core_1.coreClass {
         }
         return this.setFilters(fcfg);
     }
+    /**
+     * Sets an empty filter in the Event Service
+     * @param flush Optinal `flush` attribute (defaults to `false`)
+     * @returns a promise to the current Event Service to ease promise chaining
+     */
     clearFilter(flush = false) {
         let fcfg = { filter: { filters: [] }, filterOptions: {} };
         if (flush) {
@@ -120,15 +160,28 @@ class EventService extends core_1.coreClass {
         this.pause();
         return this.setFilters(fcfg);
     }
+    /**
+     * Performs an `ACK` operation on the Event Service
+     */
     async ack() {
         return this.void_X_Operation(this.ackUrl);
     }
+    /**
+     * Performs a `NACK` operation on the Event Service
+     */
     async nack() {
         return this.void_X_Operation(this.nackUrl);
     }
+    /**
+     * Performs a `FLUSH` operation on the Event Service
+     */
     async flush() {
         return this.void_X_Operation(this.flushUrl);
     }
+    /**
+     * Performs a `POLL` operation on the Event Service
+     * @returns a promise that resolves to an array of {@link esEvent} objects
+     */
     async poll() {
         let body = '{}';
         if (this.popts.pollTimeout != 1000) {
@@ -144,7 +197,7 @@ class EventService extends core_1.coreClass {
                 return r_json;
             }
         }
-        throw new error_1.PanCloudError(EventService, 'PARSER', 'Response is not a valid ES Event array');
+        throw new error_1.PanCloudError(this, 'PARSER', 'Response is not a valid ES Event array');
     }
     static async autoPoll(es) {
         es.polling = true;
@@ -159,7 +212,7 @@ class EventService extends core_1.coreClass {
             });
         }
         catch (err) {
-            common_1.commonLogger.error(error_1.PanCloudError.fromError(EventService, err));
+            common_1.commonLogger.error(error_1.PanCloudError.fromError(es, err));
         }
         if (es.polling) {
             if (e.length) {
@@ -170,6 +223,9 @@ class EventService extends core_1.coreClass {
             }
         }
     }
+    /**
+     * Stops this class AutoPoll feature for this Event Service instance
+     */
     pause() {
         this.polling = false;
         if (this.tout) {
@@ -177,9 +233,13 @@ class EventService extends core_1.coreClass {
             this.tout = undefined;
         }
     }
+    /**
+     * (Re)Starts the AutoPoll feature for this Event Service instance. Typically the user won't start the
+     * AutoPoll feature using this method but providing a valid callback in the {@link filterOptions} when calling
+     * the method {@link EventService.setFilters}
+     */
     resume() {
         EventService.autoPoll(this);
     }
 }
-EventService.className = "EventService";
 exports.EventService = EventService;
