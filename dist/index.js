@@ -11,3 +11,5 @@ exports.ApplicationFrameworkError = error_1.ApplicationFrameworkError;
 exports.isSdkError = error_1.isSdkError;
 var common_1 = require("./common");
 exports.logLevel = common_1.logLevel;
+var util_1 = require("./util");
+exports.util = util_1.util;

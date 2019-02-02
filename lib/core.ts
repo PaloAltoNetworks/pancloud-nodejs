@@ -7,20 +7,39 @@ import { Credentials } from './credentials'
 import { ApplicationFrameworkError, PanCloudError } from './error'
 import { EventEmitter } from 'events'
 import { LOGTYPE, commonLogger, logLevel, retrier } from './common';
+import { util } from './util'
+import { macCorrelator, correlatedEvent, correlationStats } from './l2correlator'
 
 const EVENT_EVENT = 'EVENT_EVENT'
 const PCAP_EVENT = 'PCAP_EVENT'
-const CORRELATION_EVENT = 'CORRELATION_EVENT'
-type eventTypes = typeof EVENT_EVENT | typeof PCAP_EVENT | typeof CORRELATION_EVENT
+const CORR_EVENT = 'CORR_EVENT'
+type eventTypes = typeof EVENT_EVENT | typeof PCAP_EVENT | typeof CORR_EVENT
 
 /**
  * coreClass supports "async operations". In this mode, events received by the Framework will be send to its
  * subscribers. Emitted events will be conformant to this interface.
  */
-export interface emittedEvent {
+export interface emitterInterface<T> {
     source: string,
     logType?: LOGTYPE,
-    event?: any[]
+    message?: T
+}
+
+export interface l2correlation {
+    time_generated: string,
+    sessionid: string,
+    src: string,
+    dst: string,
+    "extended-traffic-log-mac": string
+    "extended-traffic-log-mac-stc": string
+}
+
+export interface coreStats {
+    apiTransactions: number,
+    eventsEmitted: number,
+    pcapsEmitted: number,
+    correlationEmitted: number
+    correlationStats?: correlationStats
 }
 
 /**
@@ -55,6 +74,14 @@ export interface coreOptions {
      * Delay (in milliseconds) between retry attempts
      */
     retrierDelay?: number
+    /**
+     * Auto L2-L3 engine parameters
+     */
+    l2Corr?: {
+        timeWindow?: number
+        absoluteTime?: boolean
+        gcMultiplier?: number
+    }
 }
 
 /**
@@ -85,6 +112,9 @@ export class coreClass {
     private retrierDelay?: number
     lastResponse: any
     public className: string
+    l2enable: boolean
+    l2engine: macCorrelator
+    private stats: coreStats
 
     /**
      * 
@@ -106,6 +136,21 @@ export class coreClass {
         }
         this.retrierCount = ops.retrierCount
         this.retrierDelay = ops.retrierDelay
+        this.stats = {
+            apiTransactions: 0,
+            correlationEmitted: 0,
+            eventsEmitted: 0,
+            pcapsEmitted: 0
+        }
+        if (ops.l2Corr) {
+            this.l2enable = true
+            this.l2engine = new macCorrelator(
+                ops.l2Corr.timeWindow,
+                ops.l2Corr.absoluteTime,
+                ops.l2Corr.gcMultiplier)
+        } else {
+            this.l2enable = false
+        }
         this.setFetchHeaders()
     }
 
@@ -128,7 +173,7 @@ export class coreClass {
      * @param l listener
      * @returns true is the listener is accepted. False otherwise (duplicated?)
      */
-    protected registerEvenetListener(l: (e: emittedEvent) => void): boolean {
+    protected registerEvenetListener(l: (e: emitterInterface<any[]>) => void): boolean {
         return this.registerListener(EVENT_EVENT, l)
     }
 
@@ -136,40 +181,46 @@ export class coreClass {
      * Unregisters a listener from the 'event' topic.
      * @param l listener
      */
-    protected unregisterEvenetListener(l: (e: emittedEvent) => void): void {
+    protected unregisterEvenetListener(l: (e: emitterInterface<any[]>) => void): void {
         this.unregisterListener(EVENT_EVENT, l)
     }
 
     /**
      * @ignore To Be Implemented
      */
-    protected registerCorrelationListener(l: (e: boolean) => void): boolean {
-        return this.registerListener(CORRELATION_EVENT, l)
-    }
-
-    /**
-     * @ignore To Be Implemented
-     */
-    protected unregisterCorrelationListener(l: (e: boolean) => void): void {
-        this.unregisterListener(CORRELATION_EVENT, l)
-    }
-
-    /**
-     * @ignore To Be Implemented
-     */
-    protected registerPcapListener(l: (e: boolean) => void): boolean {
+    protected registerPcapListener(l: (e: emitterInterface<Buffer>) => void): boolean {
         return this.registerListener(PCAP_EVENT, l)
     }
 
     /**
      * @ignore To Be Implemented
      */
-    protected unregisterPcapListener(l: (e: boolean) => void): void {
+    protected unregisterCorrListener(l: (e: emitterInterface<l2correlation[]>) => void): void {
+        this.unregisterListener(CORR_EVENT, l)
+    }
+
+    /**
+     * @ignore To Be Implemented
+     */
+    protected registerCorrListener(l: (e: emitterInterface<l2correlation[]>) => void): boolean {
+        return this.registerListener(CORR_EVENT, l)
+    }
+
+    /**
+     * @ignore To Be Implemented
+     */
+    protected unregisterPcapListener(l: (e: emitterInterface<Buffer>) => void): void {
         this.unregisterListener(PCAP_EVENT, l)
     }
 
-    protected newEmitter(ee?: (e: emittedEvent) => void, pe?: (arg: boolean) => void, ce?: (arg: boolean) => void) {
+    protected newEmitter(
+        ee?: (e: emitterInterface<any[]>) => void,
+        pe?: (arg: emitterInterface<Buffer>) => void,
+        ce?: (e: emitterInterface<l2correlation[]>) => void) {
         this.emitter = new EventEmitter()
+        this.emitter.on('error', (err) => {
+            commonLogger.error(PanCloudError.fromError(this, err))
+        })
         this.notifier = { EVENT_EVEN: false, PCAP_EVENT: false, CORRELATION_EVENT: false }
         if (ee) {
             this.registerEvenetListener(ee)
@@ -178,7 +229,27 @@ export class coreClass {
             this.registerPcapListener(pe)
         }
         if (ce) {
-            this.registerCorrelationListener(ce)
+            this.registerCorrListener(ce)
+        }
+    }
+
+    protected emitMessage(e: emitterInterface<any[]>): void {
+        if (this.notifier[PCAP_EVENT]) {
+            this.emitPcap(e)
+        }
+        let epkg = [e]
+        let correlated: emitterInterface<correlatedEvent[]> | undefined
+        if (this.l2enable) {
+            ({ plain: epkg, correlated } = this.l2engine.process(e))
+            if (this.notifier[CORR_EVENT] && correlated) {
+                this.emitCorr(correlated)
+            }
+        }
+        if (this.notifier[EVENT_EVENT]) {
+            if (correlated) {
+                this.emitEvent(correlated)
+            }
+            epkg.forEach(x => this.emitEvent(x))
         }
     }
 
@@ -186,11 +257,56 @@ export class coreClass {
      * Used to send an event to all subscribers in the 'event' topic
      * @param e the event to be sent
      */
-    protected emitEvent(e: emittedEvent): void {
-        if (this.notifier[EVENT_EVENT]) {
-            if (!(e.event)) {
-            }
-            this.emitter.emit(EVENT_EVENT, e)
+    private emitEvent(e: emitterInterface<any[]>): void {
+        if (e.message) {
+            this.stats.eventsEmitted += e.message.length
+        }
+        this.emitter.emit(EVENT_EVENT, e)
+    }
+
+    private emitPcap(e: emitterInterface<any[]>): void {
+        let message: emitterInterface<Buffer> = {
+            source: e.source,
+        }
+        if (e.message) {
+            e.message.forEach(x => {
+                let pcapBody = util.pcaptize(x)
+                if (pcapBody) {
+                    this.stats.pcapsEmitted++
+                    message.message = pcapBody
+                    this.emitter.emit(PCAP_EVENT, message)
+                }
+            })
+        } else {
+            this.emitter.emit(PCAP_EVENT, message)
+        }
+    }
+
+    private emitCorr(e: emitterInterface<correlatedEvent[]>): void {
+        if (e.message) {
+            this.stats.correlationEmitted += e.message.length
+        }
+        if (e.message) {
+            this.emitter.emit(CORR_EVENT, {
+                source: e.source,
+                logType: e.logType,
+                message: e.message.map(x => <l2correlation>{
+                    time_generated: x.time_generated,
+                    sessionid: x.sessionid,
+                    src: x.src,
+                    dst: x.src,
+                    "extended-traffic-log-mac": x["extended-traffic-log-mac"],
+                    "extended-traffic-log-mac-stc": x["extended-traffic-log-mac-stc"]
+                })
+            })
+        }
+    }
+
+    public l2CorrFlush(): void {
+        if (this.l2enable) {
+            let { plain } = this.l2engine.flush()
+            if (this.notifier[EVENT_EVENT]) { plain.forEach(x => this.emitEvent(x)) }
+            commonLogger.info(this, "Flushed the L3/L2 Correlation engine DB", "CORRELATION")
         }
     }
 
@@ -222,6 +338,7 @@ export class coreClass {
     }
 
     private async fetchXWrap(url: string, method: string, body?: string, timeout?: number): Promise<any> {
+        this.stats.apiTransactions++
         await this.checkAutoRefresh()
         let rinit: fetch.RequestInit = {
             headers: this.fetchHeaders,
@@ -234,7 +351,7 @@ export class coreClass {
             rinit.body = body
         }
         commonLogger.debug(this, `fetch operation to ${url}`, method, body)
-        let r = await retrier(this, undefined, undefined, fetch.default, url, rinit)
+        let r = await retrier(this, this.retrierCount, this.retrierDelay, fetch.default, url, rinit)
         let r_text = await r.text()
         if (r_text.length == 0) {
             commonLogger.info(this, 'fetch response is null')
@@ -294,5 +411,12 @@ export class coreClass {
     protected async void_X_Operation(url: string, payload?: string, method = "POST"): Promise<void> {
         let r_json = await this.fetchXWrap(url, method, payload);
         this.lastResponse = r_json
+    }
+
+    protected getCoreStats(): coreStats {
+        if (this.l2enable) {
+            return { ...this.stats, correlationStats: this.l2engine.getStats() }
+        }
+        return this.stats
     }
 }

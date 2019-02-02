@@ -1,8 +1,9 @@
 /**
  * High level abstraction of the Application Framework Logging Service
  */
+/// <reference types="node" />
 import { LOGTYPE } from './common';
-import { coreClass, emittedEvent, coreOptions } from './core';
+import { coreClass, emitterInterface, coreOptions, l2correlation, coreStats } from './core';
 declare const jStatus: {
     'RUNNING': string;
     'FINISHED': string;
@@ -13,6 +14,12 @@ declare const jStatus: {
  * Convenience type to guide the user to all possible LS JOB status value
  */
 export declare type jobStatus = keyof typeof jStatus;
+export interface lsStats {
+    queries: number;
+    records: number;
+    polls: number;
+    deletes: number;
+}
 /**
  * Interface to provide a query
  */
@@ -92,6 +99,7 @@ export declare class LoggingService extends coreClass {
     private lastProcElement;
     private pendingQueries;
     private fetchTimeout;
+    private lsstats;
     private constructor();
     /**
      * Logging Service object factory method
@@ -115,7 +123,11 @@ export declare class LoggingService extends coreClass {
      * class configuration properties
      * @returns a promise with the Application Framework response
      */
-    query(cfg: lsQuery, eCallBack?: ((e: emittedEvent) => void) | null, sleep?: number, fetchTimeout?: number): Promise<jobResult>;
+    query(cfg: lsQuery, CallBack?: {
+        event?: ((e: emitterInterface<any[]>) => void);
+        pcap?: ((p: emitterInterface<Buffer>) => void);
+        corr?: ((e: emitterInterface<l2correlation[]>) => void);
+    }, sleep?: number, fetchTimeout?: number): Promise<jobResult>;
     /**
      * Used for synchronous operations (when the auto-poll feature of a query is not used)
      * @param qid the query id to poll results from
@@ -141,7 +153,7 @@ export declare class LoggingService extends coreClass {
      * User can use this method to cancel (remove) a query from the auto-poll queue
      * @param qid query id to be cancelled
      */
-    cancelPoll(qid: string): void;
+    cancelPoll(qid: string, reject: (r: any) => void, cause?: Error): void;
     /**
      * Use this method to cancel a running query
      * @param qid the query id to be cancelled
@@ -149,5 +161,6 @@ export declare class LoggingService extends coreClass {
     delete_query(queryId: string): Promise<void>;
     private eventEmitter;
     private emitterCleanup;
+    getLsStats(): lsStats | coreStats;
 }
 export {};

@@ -1,8 +1,9 @@
 /**
  * High level abstraction of the Application Framework Event Service
  */
+/// <reference types="node" />
 import { LOGTYPE } from './common';
-import { coreClass, emittedEvent, coreOptions } from './core';
+import { coreClass, emitterInterface, coreOptions, l2correlation, coreStats } from './core';
 /**
  * Event Service emitted message interface
  */
@@ -29,9 +30,11 @@ interface esPollOptions {
     ack: boolean;
 }
 interface esFilterOptions {
-    eventCallBack?(e: emittedEvent): void;
-    correlationCallBack?(): void;
-    pcapCallBack?(): void;
+    CallBack?: {
+        event?: ((e: emitterInterface<any[]>) => void);
+        pcap?: ((p: emitterInterface<Buffer>) => void);
+        corr?: ((e: emitterInterface<l2correlation[]>) => void);
+    };
     sleep?: number;
     poolOptions?: esPollOptions;
 }
@@ -58,6 +61,16 @@ export interface esFilterBuilderCfg {
 export interface esOptions {
     channelId?: string;
 }
+export interface esStats {
+    records: number;
+    polls: number;
+    deletes: number;
+    filtersets: number;
+    filtergets: number;
+    acks: number;
+    nacks: number;
+    flushes: number;
+}
 /**
  * High-level class that implements an Application Framework Event Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
@@ -73,6 +86,7 @@ export declare class EventService extends coreClass {
     private tout;
     private polling;
     private eevent;
+    private esStats;
     private constructor();
     private setChannel;
     /**
@@ -134,5 +148,6 @@ export declare class EventService extends coreClass {
      * the method {@link EventService.setFilters}
      */
     resume(): void;
+    getEsStats(): esStats | coreStats;
 }
 export {};

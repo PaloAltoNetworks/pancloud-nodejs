@@ -1,11 +1,12 @@
 import { Credentials, LoggingService, ENTRYPOINT, lsQuery, emitterInterface, logLevel } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
+import { writeFileSync } from 'fs'
 
 const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
 let now = Math.floor(Date.now() / 1000)
 
 let query: lsQuery = {
-    query: 'select * from panw.traffic limit 4',
+    query: 'select * from panw.threat limit 40',
     startTime: now - 3600,
     endTime: now,
     maxWaitTime: 1000
@@ -26,24 +27,14 @@ export async function main(): Promise<void> {
         // level: logLevel.DEBUG,
         entryPoint: entryPoint
     })
-    try {
-        let result = await ls.query(query, { event: receiver }, undefined, 45000)
-        console.log(`Job ${result.queryId} completed with status ${result.queryStatus}`)
-    } catch (e) {
-        console.log(`Something went wrong with a LS query ${e}`)
-    }
+    await ls.query(query, { pcap: receiver }, undefined, 45000) // Schedule query 1 and register the receiver
 }
 
-let lQid = ""
-let eventCounter = 0
+let pcapCounter = 0
 
-function receiver(e: emitterInterface<any[]>): void {
-    if (e.source != lQid) {
-        lQid = e.source
-        console.log(`\nReceiving: Event Type: ${e.logType} from ${e.source}`)
-    }
+function receiver(e: emitterInterface<Buffer>): void {
     if (e.message) {
-        eventCounter += e.message.length
-        console.log(`${eventCounter} events received so far`)
+        writeFileSync("pcap" + ("00" + pcapCounter++).substr(-3) + ".pcap", e.message)
+        console.log(`Received PCAP body of ${e.message.length} bytes`)
     }
 }

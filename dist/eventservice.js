@@ -54,12 +54,7 @@ function is_esFilter(obj) {
  */
 class EventService extends core_1.coreClass {
     constructor(ops) {
-        super({
-            credential: ops.credential,
-            entryPoint: ops.entryPoint,
-            allowDup: ops.allowDup,
-            level: ops.level
-        });
+        super(ops);
         this.className = "EventService";
         if (!ops.channelId) {
             ops.channelId = 'EventFilter';
@@ -69,6 +64,16 @@ class EventService extends core_1.coreClass {
         this.ap_sleep = MSLEEP;
         this.polling = false;
         this.eevent = { source: "EventService" };
+        this.esStats = {
+            acks: 0,
+            nacks: 0,
+            deletes: 0,
+            filtergets: 0,
+            filtersets: 0,
+            flushes: 0,
+            polls: 0,
+            records: 0
+        };
     }
     setChannel(channelId) {
         this.filterUrl = `${this.entryPoint}/${esPath}/${channelId}/filters`;
@@ -90,6 +95,7 @@ class EventService extends core_1.coreClass {
      * @returns the current Event Service filter configuration
      */
     async getFilters() {
+        this.esStats.filtergets++;
         let r_json = await this.fetchGetWrap(this.filterUrl);
         this.lastResponse = r_json;
         if (is_esFilter(r_json)) {
@@ -104,11 +110,12 @@ class EventService extends core_1.coreClass {
      * @returns a promise to the current Event Service to ease promise chaining
      */
     async setFilters(fcfg) {
+        this.esStats.filtersets++;
         this.popts = (fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO;
         this.ap_sleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP;
         await this.void_X_Operation(this.filterUrl, JSON.stringify(fcfg.filter), 'PUT');
-        if (fcfg.filterOptions.eventCallBack || fcfg.filterOptions.pcapCallBack || fcfg.filterOptions.correlationCallBack) {
-            this.newEmitter(fcfg.filterOptions.eventCallBack, fcfg.filterOptions.pcapCallBack, fcfg.filterOptions.correlationCallBack);
+        if (fcfg.filterOptions.CallBack) {
+            this.newEmitter(fcfg.filterOptions.CallBack.event, fcfg.filterOptions.CallBack.pcap, fcfg.filterOptions.CallBack.corr);
             EventService.autoPoll(this);
         }
         else if (this.tout) {
@@ -164,18 +171,21 @@ class EventService extends core_1.coreClass {
      * Performs an `ACK` operation on the Event Service
      */
     async ack() {
+        this.esStats.acks++;
         return this.void_X_Operation(this.ackUrl);
     }
     /**
      * Performs a `NACK` operation on the Event Service
      */
     async nack() {
+        this.esStats.nacks++;
         return this.void_X_Operation(this.nackUrl);
     }
     /**
      * Performs a `FLUSH` operation on the Event Service
      */
     async flush() {
+        this.esStats.flushes++;
         return this.void_X_Operation(this.flushUrl);
     }
     /**
@@ -183,6 +193,7 @@ class EventService extends core_1.coreClass {
      * @returns a promise that resolves to an array of {@link esEvent} objects
      */
     async poll() {
+        this.esStats.polls++;
         let body = '{}';
         if (this.popts.pollTimeout != 1000) {
             body = JSON.stringify({ pollTimeout: this.popts.pollTimeout });
@@ -190,7 +201,13 @@ class EventService extends core_1.coreClass {
         let r_json = await this.fetchPostWrap(this.pollUrl, body, this.popts.fetchTimeout);
         this.lastResponse = r_json;
         if (r_json && typeof r_json == "object" && r_json instanceof Array) {
-            if (r_json.every(e => is_esEvent(e))) {
+            if (r_json.every(e => {
+                if (is_esEvent(e)) {
+                    this.esStats.records += e.event.length;
+                    return true;
+                }
+                return false;
+            })) {
                 if (this.popts.ack) {
                     await this.ack();
                 }
@@ -207,8 +224,8 @@ class EventService extends core_1.coreClass {
             e = await es.poll();
             e.forEach(i => {
                 es.eevent.logType = i.logType;
-                es.eevent.event = i.event;
-                es.emitEvent(es.eevent);
+                es.eevent.message = i.event;
+                es.emitMessage(es.eevent);
             });
         }
         catch (err) {
@@ -240,6 +257,9 @@ class EventService extends core_1.coreClass {
      */
     resume() {
         EventService.autoPoll(this);
+    }
+    getEsStats() {
+        return Object.assign({}, this.esStats, this.getCoreStats());
     }
 }
 exports.EventService = EventService;

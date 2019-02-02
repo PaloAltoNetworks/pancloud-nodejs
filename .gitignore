@@ -1,4 +1,5 @@
 package-lock.json
 secrets.*
 example/*js
+lib/*js
 node_modules/

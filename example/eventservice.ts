@@ -7,6 +7,8 @@ import * as eventservice_getfilter from './eventservice_getfilter'
 import * as eventservice_poll from './eventservice_poll'
 import * as eventservice_async_poll from './eventservice_async_poll'
 import * as eventservice_clearfilter from './eventservice_clearfilter'
+import * as eventservice_pcap from './eventservice_async_pcap'
+import * as eventservice_corr from './eventservice_async_correlation'
 
 const examples: { [i: string]: () => Promise<void> } = {
     "ACK": eventservice_ack.main,
@@ -16,6 +18,8 @@ const examples: { [i: string]: () => Promise<void> } = {
     "GET_FILTER": eventservice_getfilter.main,
     "POLL": eventservice_poll.main,
     "ASYNC_POLL": eventservice_async_poll.main,
+    "ASYNC_PCAP": eventservice_pcap.main,
+    "ASYNC_CORR": eventservice_corr.main,
     "CLEAR_FILTER": eventservice_clearfilter.main,
 }
 
