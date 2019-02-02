@@ -12,6 +12,9 @@ let builderCfg: esFilterBuilderCfg = {
     filterOptions: {}
 }
 
+/**
+ * Use the enventservice.js launcher to call this main() function
+ */
 export async function main(): Promise<void> {
     let c = await Credentials.factory({
         client_id: c_id,

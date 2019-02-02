@@ -3,7 +3,7 @@
  */
 
 import { PATH, isKnownLogType, LOGTYPE, commonLogger } from './common'
-import { coreClass, emittedEvent, coreOptions } from './core'
+import { coreClass, emitterInterface, coreOptions, l2correlation, coreStats } from './core'
 import { PanCloudError, isSdkError } from './error'
 import { setTimeout } from 'timers';
 
@@ -28,6 +28,12 @@ function isJobStatus(s: string): s is jobStatus {
 
 let knownIndexes: string[] = ["panw.", "tms."]
 
+export interface lsStats {
+    queries: number,
+    records: number,
+    polls: number,
+    deletes: number
+}
 /**
  * Interface to provide a query
  */
@@ -122,6 +128,8 @@ function isJobResult(obj: any): obj is jobResult {
 interface jobEntry {
     logtype: LOGTYPE | undefined,
     sequenceNo: number,
+    resolve: (jResult: jobResult) => void,
+    reject: (reason: any) => void,
     maxWaitTime?: number
 }
 
@@ -131,13 +139,14 @@ interface jobEntry {
  */
 export class LoggingService extends coreClass {
     private url: string
-    private eevent: emittedEvent
+    private eevent: emitterInterface<any[]>
     private ap_sleep: number
     private tout: NodeJS.Timeout | undefined
     private jobQueue: { [i: string]: jobEntry }
     private lastProcElement: number
     private pendingQueries: string[]
     private fetchTimeout: number | undefined
+    private lsstats: lsStats
 
     private constructor(ops: coreOptions) {
         super(ops)
@@ -148,6 +157,12 @@ export class LoggingService extends coreClass {
         this.jobQueue = {}
         this.lastProcElement = 0
         this.pendingQueries = []
+        this.lsstats = {
+            records: 0,
+            deletes: 0,
+            polls: 0,
+            queries: 0
+        }
     };
 
     /**
@@ -175,7 +190,16 @@ export class LoggingService extends coreClass {
      * class configuration properties
      * @returns a promise with the Application Framework response
      */
-    async query(cfg: lsQuery, eCallBack?: ((e: emittedEvent) => void) | null, sleep?: number, fetchTimeout?: number): Promise<jobResult> {
+    async query(
+        cfg: lsQuery,
+        CallBack?: {
+            event?: ((e: emitterInterface<any[]>) => void),
+            pcap?: ((p: emitterInterface<Buffer>) => void),
+            corr?: ((e: emitterInterface<l2correlation[]>) => void)
+        },
+        sleep?: number,
+        fetchTimeout?: number): Promise<jobResult> {
+        this.lsstats.queries++
         if (sleep) { this.ap_sleep = sleep }
         this.fetchTimeout = fetchTimeout
         let providedLogType = cfg.logType
@@ -186,27 +210,51 @@ export class LoggingService extends coreClass {
         if (!(isJobResult(r_json))) {
             throw new PanCloudError(this, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(r_json)}`)
         }
+        if (r_json.result.esResult) {
+            this.lsstats.records += r_json.result.esResult.hits.hits.length
+        }
         if (r_json.queryStatus != "JOB_FAILED") {
-            if (eCallBack !== undefined) {
-                if (eCallBack) {
-                    if (!this.registerEvenetListener(eCallBack)) {
+            if (CallBack !== undefined) {
+                if (CallBack.event) {
+                    if (!this.registerEvenetListener(CallBack.event)) {
                         commonLogger.info(this, "Event receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER")
                     }
                 }
+                if (CallBack.pcap) {
+                    if (!this.registerPcapListener(CallBack.pcap)) {
+                        commonLogger.info(this, "PCAP receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER")
+                    }
+                }
+                if (CallBack.corr) {
+                    if (!this.registerCorrListener(CallBack.corr)) {
+                        commonLogger.info(this, "CORR receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER")
+                    }
+                }
                 let seq = 0
-                this.jobQueue[r_json.queryId] = { logtype: providedLogType, sequenceNo: seq, maxWaitTime: cfg.maxWaitTime }
+                let jobPromise = new Promise<jobResult>((resolve, reject) => {
+                    this.jobQueue[r_json.queryId] = {
+                        logtype: providedLogType,
+                        sequenceNo: seq,
+                        resolve: resolve,
+                        reject: reject,
+                        maxWaitTime: cfg.maxWaitTime
+                    }
+                })
                 this.pendingQueries = Object.keys(this.jobQueue)
                 this.eventEmitter(r_json)
                 if (r_json.queryStatus == "JOB_FINISHED") {
+                    let jobResolver = this.jobQueue[r_json.queryId].resolve
                     await this.emitterCleanup(r_json)
+                    jobResolver(r_json)
                 }
                 if (r_json.queryStatus == "FINISHED") {
-                    seq = r_json.sequenceNo + 1
+                    this.jobQueue[r_json.queryId].sequenceNo = r_json.sequenceNo + 1
                 }
                 if (this.pendingQueries.length > 0 && this.tout === undefined) {
                     this.tout = setTimeout(LoggingService.autoPoll, this.ap_sleep, this)
                     commonLogger.info(this, "query autopoller scheduled", "QUERY")
                 }
+                return jobPromise
             }
         }
         return r_json
@@ -232,6 +280,7 @@ export class LoggingService extends coreClass {
      * @returns a promise with the Application Framework response
      */
     async poll(qid: string, sequenceNo: number, maxWaitTime?: number): Promise<jobResult> {
+        this.lsstats.polls++
         let targetUrl = `${this.url}/${qid}/${sequenceNo}`
         if (maxWaitTime && maxWaitTime > 0) {
             targetUrl += `?maxWaitTime=${maxWaitTime}`
@@ -239,6 +288,9 @@ export class LoggingService extends coreClass {
         let r_json = await this.fetchGetWrap(targetUrl, this.fetchTimeout);
         this.lastResponse = r_json
         if (isJobResult(r_json)) {
+            if (r_json.result.esResult) {
+                this.lsstats.records += r_json.result.esResult.hits.hits.length
+            }
             return r_json
         }
         throw new PanCloudError(this, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(r_json)}`)
@@ -256,7 +308,7 @@ export class LoggingService extends coreClass {
             jobR = await ls.poll(currentQid, currentJob.sequenceNo, currentJob.maxWaitTime)
             if (jobR.queryStatus == "JOB_FAILED") {
                 commonLogger.alert(ls, `JOB_FAILED returned. Cancelling query ${currentQid}`, 'AUTOPOLL')
-                ls.cancelPoll(currentQid)
+                ls.cancelPoll(currentQid, currentJob.reject)
             } else {
                 ls.eventEmitter(jobR)
                 if (jobR.queryStatus == "FINISHED") {
@@ -264,13 +316,13 @@ export class LoggingService extends coreClass {
                 }
                 if (jobR.queryStatus == "JOB_FINISHED") {
                     await ls.emitterCleanup(jobR)
+                    currentJob.resolve(jobR)
                 }
             }
         } catch (err) {
             if (isSdkError(err)) {
-                commonLogger.error(err)
                 commonLogger.alert(ls, `Error triggered. Cancelling query ${currentQid}`, 'AUTOPOLL')
-                ls.cancelPoll(currentQid)
+                ls.cancelPoll(currentQid, currentJob.reject, err)
             } else {
                 commonLogger.error(PanCloudError.fromError(ls, err))
             }
@@ -287,16 +339,19 @@ export class LoggingService extends coreClass {
      * User can use this method to cancel (remove) a query from the auto-poll queue
      * @param qid query id to be cancelled 
      */
-    public cancelPoll(qid: string): void {
+    public cancelPoll(qid: string, reject: (r: any) => void, cause?: Error): void {
         if (qid in this.jobQueue) {
-            if (this.pendingQueries.length == 1 && this.tout) {
-                clearTimeout(this.tout)
-                this.tout = undefined
-                commonLogger.info(this, "query autopoller de-scheduled", "AUTOPOLL")
-            }
             delete this.jobQueue[qid]
             this.pendingQueries = Object.keys(this.jobQueue)
-            this.emitEvent({ source: qid })
+            if (this.pendingQueries.length == 0 && this.tout) {
+                clearTimeout(this.tout)
+                this.tout = undefined
+                this.l2CorrFlush()
+            }
+            if (cause) {
+                reject(cause)
+            }
+            reject(new PanCloudError(this, "UNKNOWN", "Rejecting auto-poll query (JOB_FAILED?)"))
         }
     }
 
@@ -304,12 +359,15 @@ export class LoggingService extends coreClass {
      * Use this method to cancel a running query
      * @param qid the query id to be cancelled 
      */
-    public async delete_query(queryId: string): Promise<void> {
+    public delete_query(queryId: string): Promise<void> {
+        this.lsstats.deletes++
         return this.void_X_Operation(`${this.url}/${queryId}`, undefined, "DELETE")
     }
 
     private eventEmitter(j: jobResult): void {
-        if (!(j.result.esResult && this.pendingQueries.includes(j.queryId))) {
+        if (!(j.result.esResult &&
+            this.pendingQueries.includes(j.queryId) &&
+            j.result.esResult.hits.hits.length > 0)) {
             return
         }
         this.eevent.source = j.queryId
@@ -340,17 +398,23 @@ export class LoggingService extends coreClass {
                 return
             }
         }
-        this.eevent.event = j.result.esResult.hits.hits.map(e => e._source)
-        this.emitEvent(this.eevent)
+        this.eevent.message = j.result.esResult.hits.hits.map(e => e._source)
+        this.emitMessage(this.eevent)
     }
 
     private emitterCleanup(j: jobResult): Promise<void> {
         let qid = j.queryId
-        this.emitEvent({ source: qid })
+        if (this.pendingQueries.length == 1) {
+            this.l2CorrFlush()
+        }
         if (qid in this.jobQueue) {
             delete this.jobQueue[qid]
         }
         this.pendingQueries = Object.keys(this.jobQueue)
         return this.delete_query(qid)
+    }
+
+    public getLsStats(): lsStats | coreStats {
+        return { ...this.lsstats, ...this.getCoreStats() }
     }
 }

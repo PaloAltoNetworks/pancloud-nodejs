@@ -58,6 +58,12 @@ class LoggingService extends core_1.coreClass {
         this.jobQueue = {};
         this.lastProcElement = 0;
         this.pendingQueries = [];
+        this.lsstats = {
+            records: 0,
+            deletes: 0,
+            polls: 0,
+            queries: 0
+        };
     }
     ;
     /**
@@ -84,7 +90,8 @@ class LoggingService extends core_1.coreClass {
      * class configuration properties
      * @returns a promise with the Application Framework response
      */
-    async query(cfg, eCallBack, sleep, fetchTimeout) {
+    async query(cfg, CallBack, sleep, fetchTimeout) {
+        this.lsstats.queries++;
         if (sleep) {
             this.ap_sleep = sleep;
         }
@@ -97,27 +104,51 @@ class LoggingService extends core_1.coreClass {
         if (!(isJobResult(r_json))) {
             throw new error_1.PanCloudError(this, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(r_json)}`);
         }
+        if (r_json.result.esResult) {
+            this.lsstats.records += r_json.result.esResult.hits.hits.length;
+        }
         if (r_json.queryStatus != "JOB_FAILED") {
-            if (eCallBack !== undefined) {
-                if (eCallBack) {
-                    if (!this.registerEvenetListener(eCallBack)) {
+            if (CallBack !== undefined) {
+                if (CallBack.event) {
+                    if (!this.registerEvenetListener(CallBack.event)) {
                         common_1.commonLogger.info(this, "Event receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER");
                     }
                 }
+                if (CallBack.pcap) {
+                    if (!this.registerPcapListener(CallBack.pcap)) {
+                        common_1.commonLogger.info(this, "PCAP receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER");
+                    }
+                }
+                if (CallBack.corr) {
+                    if (!this.registerCorrListener(CallBack.corr)) {
+                        common_1.commonLogger.info(this, "CORR receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER");
+                    }
+                }
                 let seq = 0;
-                this.jobQueue[r_json.queryId] = { logtype: providedLogType, sequenceNo: seq, maxWaitTime: cfg.maxWaitTime };
+                let jobPromise = new Promise((resolve, reject) => {
+                    this.jobQueue[r_json.queryId] = {
+                        logtype: providedLogType,
+                        sequenceNo: seq,
+                        resolve: resolve,
+                        reject: reject,
+                        maxWaitTime: cfg.maxWaitTime
+                    };
+                });
                 this.pendingQueries = Object.keys(this.jobQueue);
                 this.eventEmitter(r_json);
                 if (r_json.queryStatus == "JOB_FINISHED") {
+                    let jobResolver = this.jobQueue[r_json.queryId].resolve;
                     await this.emitterCleanup(r_json);
+                    jobResolver(r_json);
                 }
                 if (r_json.queryStatus == "FINISHED") {
-                    seq = r_json.sequenceNo + 1;
+                    this.jobQueue[r_json.queryId].sequenceNo = r_json.sequenceNo + 1;
                 }
                 if (this.pendingQueries.length > 0 && this.tout === undefined) {
                     this.tout = timers_1.setTimeout(LoggingService.autoPoll, this.ap_sleep, this);
                     common_1.commonLogger.info(this, "query autopoller scheduled", "QUERY");
                 }
+                return jobPromise;
             }
         }
         return r_json;
@@ -142,6 +173,7 @@ class LoggingService extends core_1.coreClass {
      * @returns a promise with the Application Framework response
      */
     async poll(qid, sequenceNo, maxWaitTime) {
+        this.lsstats.polls++;
         let targetUrl = `${this.url}/${qid}/${sequenceNo}`;
         if (maxWaitTime && maxWaitTime > 0) {
             targetUrl += `?maxWaitTime=${maxWaitTime}`;
@@ -149,6 +181,9 @@ class LoggingService extends core_1.coreClass {
         let r_json = await this.fetchGetWrap(targetUrl, this.fetchTimeout);
         this.lastResponse = r_json;
         if (isJobResult(r_json)) {
+            if (r_json.result.esResult) {
+                this.lsstats.records += r_json.result.esResult.hits.hits.length;
+            }
             return r_json;
         }
         throw new error_1.PanCloudError(this, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(r_json)}`);
@@ -165,7 +200,7 @@ class LoggingService extends core_1.coreClass {
             jobR = await ls.poll(currentQid, currentJob.sequenceNo, currentJob.maxWaitTime);
             if (jobR.queryStatus == "JOB_FAILED") {
                 common_1.commonLogger.alert(ls, `JOB_FAILED returned. Cancelling query ${currentQid}`, 'AUTOPOLL');
-                ls.cancelPoll(currentQid);
+                ls.cancelPoll(currentQid, currentJob.reject);
             }
             else {
                 ls.eventEmitter(jobR);
@@ -174,14 +209,14 @@ class LoggingService extends core_1.coreClass {
                 }
                 if (jobR.queryStatus == "JOB_FINISHED") {
                     await ls.emitterCleanup(jobR);
+                    currentJob.resolve(jobR);
                 }
             }
         }
         catch (err) {
             if (error_1.isSdkError(err)) {
-                common_1.commonLogger.error(err);
                 common_1.commonLogger.alert(ls, `Error triggered. Cancelling query ${currentQid}`, 'AUTOPOLL');
-                ls.cancelPoll(currentQid);
+                ls.cancelPoll(currentQid, currentJob.reject, err);
             }
             else {
                 common_1.commonLogger.error(error_1.PanCloudError.fromError(ls, err));
@@ -199,27 +234,33 @@ class LoggingService extends core_1.coreClass {
      * User can use this method to cancel (remove) a query from the auto-poll queue
      * @param qid query id to be cancelled
      */
-    cancelPoll(qid) {
+    cancelPoll(qid, reject, cause) {
         if (qid in this.jobQueue) {
-            if (this.pendingQueries.length == 1 && this.tout) {
-                clearTimeout(this.tout);
-                this.tout = undefined;
-                common_1.commonLogger.info(this, "query autopoller de-scheduled", "AUTOPOLL");
-            }
             delete this.jobQueue[qid];
             this.pendingQueries = Object.keys(this.jobQueue);
-            this.emitEvent({ source: qid });
+            if (this.pendingQueries.length == 0 && this.tout) {
+                clearTimeout(this.tout);
+                this.tout = undefined;
+                this.l2CorrFlush();
+            }
+            if (cause) {
+                reject(cause);
+            }
+            reject(new error_1.PanCloudError(this, "UNKNOWN", "Rejecting auto-poll query (JOB_FAILED?)"));
         }
     }
     /**
      * Use this method to cancel a running query
      * @param qid the query id to be cancelled
      */
-    async delete_query(queryId) {
+    delete_query(queryId) {
+        this.lsstats.deletes++;
         return this.void_X_Operation(`${this.url}/${queryId}`, undefined, "DELETE");
     }
     eventEmitter(j) {
-        if (!(j.result.esResult && this.pendingQueries.includes(j.queryId))) {
+        if (!(j.result.esResult &&
+            this.pendingQueries.includes(j.queryId) &&
+            j.result.esResult.hits.hits.length > 0)) {
             return;
         }
         this.eevent.source = j.queryId;
@@ -249,17 +290,22 @@ class LoggingService extends core_1.coreClass {
                 return;
             }
         }
-        this.eevent.event = j.result.esResult.hits.hits.map(e => e._source);
-        this.emitEvent(this.eevent);
+        this.eevent.message = j.result.esResult.hits.hits.map(e => e._source);
+        this.emitMessage(this.eevent);
     }
     emitterCleanup(j) {
         let qid = j.queryId;
-        this.emitEvent({ source: qid });
+        if (this.pendingQueries.length == 1) {
+            this.l2CorrFlush();
+        }
         if (qid in this.jobQueue) {
             delete this.jobQueue[qid];
         }
         this.pendingQueries = Object.keys(this.jobQueue);
         return this.delete_query(qid);
+    }
+    getLsStats() {
+        return Object.assign({}, this.lsstats, this.getCoreStats());
     }
 }
 exports.LoggingService = LoggingService;

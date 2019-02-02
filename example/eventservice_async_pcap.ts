@@ -1,23 +1,23 @@
 import { Credentials, EventService, ENTRYPOINT, esFilterBuilderCfg, emitterInterface, logLevel } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
+import { writeFileSync } from 'fs'
 
 const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
 
 let builderCfg: esFilterBuilderCfg = {
     filter: [
-        { table: "panw.traffic", timeout: 1000 },
-        { table: "panw.dpi", timeout: 1000 },
-        { table: "panw.threat", where: 'where risk-of-app > 3' }],
+        { table: "panw.threat", timeout: 1000 }],
     filterOptions: {
         CallBack: {
-            event: receiver
+            pcap: receiver
         },
         poolOptions: {
             ack: true,
             pollTimeout: 1000,
             fetchTimeout: 45000
         }
-    }
+    },
+    flush: true
 }
 
 /**
@@ -36,7 +36,7 @@ export async function main(): Promise<void> {
         level: logLevel.DEBUG
     })
     await es.filterBuilder(builderCfg)
-    console.log("Set the filter and registered the async event receiver")
+    console.log("Set the filter and registered the async pcap receiver")
     await new Promise<void>(resolve => {
         setTimeout(() => {
             console.log('\n1 minute timer expired. Pausing the poller')
@@ -46,18 +46,16 @@ export async function main(): Promise<void> {
     })
     await es.clearFilter(true)
     console.log("Cleared the filter and flushed the channel")
+    console.log(JSON.stringify(es.getEsStats(), undefined, " "))
 }
 
-let lType = ""
-let eventCounter = 0
+let pcapCounter = 0
 
-function receiver(e: emitterInterface<any[]>): void {
-    if (e.logType && e.logType != lType) {
-        lType = e.logType
-        console.log(`\nReceiving: Event Type: ${lType} from ${e.source}`)
-    }
+function receiver(e: emitterInterface<Buffer>): void {
     if (e.message) {
-        eventCounter += e.message.length
+        writeFileSync("pcap" + ("00" + pcapCounter++).substr(-3) + ".pcap", e.message)
+        console.log(`Received PCAP body of ${e.message.length} bytes`)
+    } else {
+        console.log(`Received null event from ${e.source}. Ending process`)
     }
-    process.stdout.write(`${eventCounter}...`)
 }

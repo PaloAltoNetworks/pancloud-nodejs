@@ -1,4 +1,4 @@
-import { Credentials, EventService, esFilterBuilderCfg, LoggingService, ENTRYPOINT, lsQuery, emittedEvent, logLevel } from 'pancloud-nodejs'
+import { Credentials, EventService, esFilterBuilderCfg, LoggingService, ENTRYPOINT, lsQuery, emitterInterface, logLevel } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
 const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
@@ -13,7 +13,7 @@ let query1: lsQuery = {
 }
 
 let query2: lsQuery = {
-    query: 'select * from panw.traffic limit 30000',
+    query: 'select * from panw.threat limit 30000',
     startTime: now - 36000,
     endTime: now,
     maxWaitTime: 1000
@@ -25,7 +25,9 @@ let builderCfg: esFilterBuilderCfg = {
         { table: "panw.dpi", timeout: 1000 },
         { table: "panw.threat", where: 'where risk-of-app > 3' }],
     filterOptions: {
-        eventCallBack: receiver,
+        CallBack: {
+            event: receiver
+        },
         poolOptions: {
             ack: true,
             pollTimeout: 1000,
@@ -34,9 +36,9 @@ let builderCfg: esFilterBuilderCfg = {
     }
 }
 
-let finishFunc: () => void
-let jobsRunning = 0
-
+/**
+ * Use the loggingservice.js launcher to call this main() function
+ */
 export async function main(): Promise<void> {
     let c = await Credentials.factory({
         client_id: c_id,
@@ -46,58 +48,44 @@ export async function main(): Promise<void> {
     })
     es = await EventService.factory({
         credential: c,
-        entryPoint: entryPoint,
-        level: logLevel.DEBUG
+        // level: logLevel.DEBUG,
+        entryPoint: entryPoint
     })
     await es.filterBuilder(builderCfg)
     console.log("Successfully started the Event Service notifier")
     let ls = await LoggingService.factory({
         credential: c,
-        entryPoint: entryPoint,
-        level: logLevel.DEBUG
+        // level: logLevel.DEBUG,
+        entryPoint: entryPoint
     })
-    await new Promise(async (resolve, reject) => {
-        finishFunc = resolve
-        try {
-            jobsRunning = 2
-            let job = await ls.query(query1, receiver, undefined, 45000) // Schedule query 1 and register the receiver
-            console.log(`Successfully scheduled the query id: ${job.queryId} with status: ${job.queryStatus}`)
-            job = await ls.query(query2, receiver, undefined, 45000) // Schedule query 2 with no additional registration
-            console.log(`Successfully scheduled the query id: ${job.queryId} with status: ${job.queryStatus}`)
-        } catch (e) {
-            reject(e)
-        }
-    })
+    let job1 = ls.query(query1, { event: receiver }, undefined, 45000) // Schedule query 1 and register the receiver
+    let job2 = ls.query(query2, { event: receiver }, undefined, 45000) // Schedule query 2 with no additional registration
+    try {
+        let results = await Promise.all([job1, job2])
+        results.forEach(j => {
+            console.log(`Job ${j.queryId} completed with status ${j.queryStatus}`)
+        })
+    } catch (e) {
+        console.log(`Something went wrong with a LS query ${e}`)
+    }
+    es.pause()
+    await es.clearFilter()
+    console.log("Logging Service stats")
+    console.log(JSON.stringify(ls.getLsStats(), undefined, " "))
+    console.log("Event Service stats")
+    console.log(JSON.stringify(es.getEsStats(), undefined, " "))
 }
 
 let lQid = ""
 let eventCounter = 0
 
-function receiver(e: emittedEvent): void {
-    if (!(e.event)) {
-        console.log(`\nReceived Empty Event (final) from ${e.source}`)
-        jobsRunning--
-        if (jobsRunning == 0) {
-            new Promise(async (resolve, reject) => {
-                try {
-                    await es.pause()
-                    console.log("Paused the Event Service notifier")
-                    await es.clearFilter(true)
-                    console.log("Cleared the Event Service filter and flushed the channel")
-                    resolve()
-                } catch (e) {
-                    reject(e)
-                }
-            }).then(() => {
-                finishFunc()
-            })
-        }
-        return
-    }
+function receiver(e: emitterInterface<any[]>): void {
     if (e.source != lQid) {
         lQid = e.source
         console.log(`\nReceiving: Event Type: ${e.logType} from ${e.source}`)
     }
-    eventCounter += e.event.length
-    process.stdout.write(`${eventCounter}...`)
+    if (e.message) {
+        eventCounter += e.message.length
+        console.log(`${eventCounter} events received so far`)
+    }
 }

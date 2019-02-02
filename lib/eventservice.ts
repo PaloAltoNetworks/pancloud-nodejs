@@ -3,7 +3,7 @@
  */
 
 import { PATH, LOGTYPE, isKnownLogType, commonLogger } from './common'
-import { coreClass, emittedEvent, coreOptions } from './core'
+import { coreClass, emitterInterface, coreOptions, l2correlation, coreStats } from './core'
 import { PanCloudError } from './error'
 import { setTimeout, clearTimeout } from 'timers'
 
@@ -82,9 +82,11 @@ interface esPollOptions {
 }
 
 interface esFilterOptions {
-    eventCallBack?(e: emittedEvent): void,
-    correlationCallBack?(): void, // TODO: define interface for correlation messages
-    pcapCallBack?(): void, // TODO: define interface for pcap messages
+    CallBack?: {
+        event?: ((e: emitterInterface<any[]>) => void),
+        pcap?: ((p: emitterInterface<Buffer>) => void),
+        corr?: ((e: emitterInterface<l2correlation[]>) => void)
+    },
     sleep?: number,
     poolOptions?: esPollOptions
 }
@@ -115,6 +117,17 @@ export interface esOptions {
     channelId?: string,
 }
 
+export interface esStats {
+    records: number,
+    polls: number,
+    deletes: number,
+    filtersets: number,
+    filtergets: number,
+    acks: number,
+    nacks: number,
+    flushes: number
+}
+
 /**
  * High-level class that implements an Application Framework Event Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
@@ -129,15 +142,11 @@ export class EventService extends coreClass {
     private ap_sleep: number
     private tout: NodeJS.Timeout | undefined
     private polling: boolean
-    private eevent: emittedEvent
+    private eevent: emitterInterface<any[]>
+    private esStats: esStats
 
     private constructor(ops: esOptions & coreOptions) {
-        super({
-            credential: ops.credential,
-            entryPoint: ops.entryPoint,
-            allowDup: ops.allowDup,
-            level: ops.level
-        })
+        super(ops)
         this.className = "EventService"
         if (!ops.channelId) { ops.channelId = 'EventFilter' }
         this.setChannel(ops.channelId)
@@ -145,6 +154,16 @@ export class EventService extends coreClass {
         this.ap_sleep = MSLEEP
         this.polling = false
         this.eevent = { source: "EventService" }
+        this.esStats = {
+            acks: 0,
+            nacks: 0,
+            deletes: 0,
+            filtergets: 0,
+            filtersets: 0,
+            flushes: 0,
+            polls: 0,
+            records: 0
+        }
     }
 
     private setChannel(channelId: string): void {
@@ -169,6 +188,7 @@ export class EventService extends coreClass {
      * @returns the current Event Service filter configuration
      */
     async getFilters(): Promise<esFilter> {
+        this.esStats.filtergets++
         let r_json = await this.fetchGetWrap(this.filterUrl);
         this.lastResponse = r_json
         if (is_esFilter(r_json)) {
@@ -184,11 +204,12 @@ export class EventService extends coreClass {
      * @returns a promise to the current Event Service to ease promise chaining
      */
     async setFilters(fcfg: esFilterCfg): Promise<EventService> {
+        this.esStats.filtersets++
         this.popts = (fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO
         this.ap_sleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP
         await this.void_X_Operation(this.filterUrl, JSON.stringify(fcfg.filter), 'PUT')
-        if (fcfg.filterOptions.eventCallBack || fcfg.filterOptions.pcapCallBack || fcfg.filterOptions.correlationCallBack) {
-            this.newEmitter(fcfg.filterOptions.eventCallBack, fcfg.filterOptions.pcapCallBack, fcfg.filterOptions.correlationCallBack)
+        if (fcfg.filterOptions.CallBack) {
+            this.newEmitter(fcfg.filterOptions.CallBack.event, fcfg.filterOptions.CallBack.pcap, fcfg.filterOptions.CallBack.corr)
             EventService.autoPoll(this)
         } else if (this.tout) {
             clearTimeout(this.tout)
@@ -203,7 +224,7 @@ export class EventService extends coreClass {
      * @param fbcfg The filter description object
      * @returns a promise to the current Event Service to ease promise chaining
      */
-    filterBuilder(fbcfg: esFilterBuilderCfg): Promise<EventService> {
+    public filterBuilder(fbcfg: esFilterBuilderCfg): Promise<EventService> {
         if (fbcfg.filter.some(f => invalidTables.includes(f.table))) {
             throw new PanCloudError(this, 'CONFIG', 'PanCloudError() only "tms.traps" is accepted in the EventService')
         }
@@ -239,7 +260,7 @@ export class EventService extends coreClass {
      * @param flush Optinal `flush` attribute (defaults to `false`)
      * @returns a promise to the current Event Service to ease promise chaining
      */
-    clearFilter(flush = false): Promise<EventService> {
+    public clearFilter(flush = false): Promise<EventService> {
         let fcfg: esFilterCfg = { filter: { filters: [] }, filterOptions: {} }
         if (flush) {
             fcfg.filter.flush = true
@@ -251,21 +272,24 @@ export class EventService extends coreClass {
     /**
      * Performs an `ACK` operation on the Event Service
      */
-    async ack(): Promise<void> {
+    public async ack(): Promise<void> {
+        this.esStats.acks++
         return this.void_X_Operation(this.ackUrl)
     }
 
     /**
      * Performs a `NACK` operation on the Event Service
      */
-    async nack(): Promise<void> {
+    public async nack(): Promise<void> {
+        this.esStats.nacks++
         return this.void_X_Operation(this.nackUrl)
     }
 
     /**
      * Performs a `FLUSH` operation on the Event Service
      */
-    async flush(): Promise<void> {
+    public async flush(): Promise<void> {
+        this.esStats.flushes++
         return this.void_X_Operation(this.flushUrl)
     }
 
@@ -273,7 +297,8 @@ export class EventService extends coreClass {
      * Performs a `POLL` operation on the Event Service
      * @returns a promise that resolves to an array of {@link esEvent} objects
      */
-    async poll(): Promise<esEvent[]> {
+    public async poll(): Promise<esEvent[]> {
+        this.esStats.polls++
         let body: string = '{}'
         if (this.popts.pollTimeout != 1000) {
             body = JSON.stringify({ pollTimeout: this.popts.pollTimeout })
@@ -281,7 +306,13 @@ export class EventService extends coreClass {
         let r_json = await this.fetchPostWrap(this.pollUrl, body, this.popts.fetchTimeout);
         this.lastResponse = r_json
         if (r_json && typeof r_json == "object" && r_json instanceof Array) {
-            if (r_json.every(e => is_esEvent(e))) {
+            if (r_json.every(e => {
+                if (is_esEvent(e)) {
+                    this.esStats.records += e.event.length
+                    return true
+                }
+                return false
+            })) {
                 if (this.popts.ack) {
                     await this.ack()
                 }
@@ -299,8 +330,8 @@ export class EventService extends coreClass {
             e = await es.poll()
             e.forEach(i => {
                 es.eevent.logType = i.logType
-                es.eevent.event = i.event
-                es.emitEvent(es.eevent)
+                es.eevent.message = i.event
+                es.emitMessage(es.eevent)
             })
         } catch (err) {
             commonLogger.error(PanCloudError.fromError(es, err))
@@ -317,7 +348,7 @@ export class EventService extends coreClass {
     /**
      * Stops this class AutoPoll feature for this Event Service instance
      */
-    pause(): void {
+    public pause(): void {
         this.polling = false
         if (this.tout) {
             clearTimeout(this.tout)
@@ -330,7 +361,11 @@ export class EventService extends coreClass {
      * AutoPoll feature using this method but providing a valid callback in the {@link filterOptions} when calling
      * the method {@link EventService.setFilters}
      */
-    resume(): void {
+    public resume(): void {
         EventService.autoPoll(this)
+    }
+
+    public getEsStats(): esStats | coreStats {
+        return { ...this.esStats, ...this.getCoreStats() }
     }
 }

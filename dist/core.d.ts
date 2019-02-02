@@ -2,14 +2,30 @@
 import { Credentials } from './credentials';
 import { EventEmitter } from 'events';
 import { LOGTYPE, logLevel } from './common';
+import { macCorrelator, correlationStats } from './l2correlator';
 /**
  * coreClass supports "async operations". In this mode, events received by the Framework will be send to its
  * subscribers. Emitted events will be conformant to this interface.
  */
-export interface emittedEvent {
+export interface emitterInterface<T> {
     source: string;
     logType?: LOGTYPE;
-    event?: any[];
+    message?: T;
+}
+export interface l2correlation {
+    time_generated: string;
+    sessionid: string;
+    src: string;
+    dst: string;
+    "extended-traffic-log-mac": string;
+    "extended-traffic-log-mac-stc": string;
+}
+export interface coreStats {
+    apiTransactions: number;
+    eventsEmitted: number;
+    pcapsEmitted: number;
+    correlationEmitted: number;
+    correlationStats?: correlationStats;
 }
 /**
  * Interface to provide configuration options to the core class
@@ -43,6 +59,14 @@ export interface coreOptions {
      * Delay (in milliseconds) between retry attempts
      */
     retrierDelay?: number;
+    /**
+     * Auto L2-L3 engine parameters
+     */
+    l2Corr?: {
+        timeWindow?: number;
+        absoluteTime?: boolean;
+        gcMultiplier?: number;
+    };
 }
 /**
  * This class should not be used directly. It is meant to be extended. Use higher-level classes like LoggingService
@@ -74,6 +98,9 @@ export declare class coreClass {
     private retrierDelay?;
     lastResponse: any;
     className: string;
+    l2enable: boolean;
+    l2engine: macCorrelator;
+    private stats;
     /**
      *
      * @param ops configuration options for this instance
@@ -86,34 +113,38 @@ export declare class coreClass {
      * @param l listener
      * @returns true is the listener is accepted. False otherwise (duplicated?)
      */
-    protected registerEvenetListener(l: (e: emittedEvent) => void): boolean;
+    protected registerEvenetListener(l: (e: emitterInterface<any[]>) => void): boolean;
     /**
      * Unregisters a listener from the 'event' topic.
      * @param l listener
      */
-    protected unregisterEvenetListener(l: (e: emittedEvent) => void): void;
+    protected unregisterEvenetListener(l: (e: emitterInterface<any[]>) => void): void;
     /**
      * @ignore To Be Implemented
      */
-    protected registerCorrelationListener(l: (e: boolean) => void): boolean;
+    protected registerPcapListener(l: (e: emitterInterface<Buffer>) => void): boolean;
     /**
      * @ignore To Be Implemented
      */
-    protected unregisterCorrelationListener(l: (e: boolean) => void): void;
+    protected unregisterCorrListener(l: (e: emitterInterface<l2correlation[]>) => void): void;
     /**
      * @ignore To Be Implemented
      */
-    protected registerPcapListener(l: (e: boolean) => void): boolean;
+    protected registerCorrListener(l: (e: emitterInterface<l2correlation[]>) => void): boolean;
     /**
      * @ignore To Be Implemented
      */
-    protected unregisterPcapListener(l: (e: boolean) => void): void;
-    protected newEmitter(ee?: (e: emittedEvent) => void, pe?: (arg: boolean) => void, ce?: (arg: boolean) => void): void;
+    protected unregisterPcapListener(l: (e: emitterInterface<Buffer>) => void): void;
+    protected newEmitter(ee?: (e: emitterInterface<any[]>) => void, pe?: (arg: emitterInterface<Buffer>) => void, ce?: (e: emitterInterface<l2correlation[]>) => void): void;
+    protected emitMessage(e: emitterInterface<any[]>): void;
     /**
      * Used to send an event to all subscribers in the 'event' topic
      * @param e the event to be sent
      */
-    protected emitEvent(e: emittedEvent): void;
+    private emitEvent;
+    private emitPcap;
+    private emitCorr;
+    l2CorrFlush(): void;
     /**
      * Prepares the HTTP headers. Mainly used to keep the Autorization header (bearer access-token)
      */
@@ -150,4 +181,5 @@ export declare class coreClass {
      * Convenience method that abstracts a DELETE operation to the Application Framework
      */
     protected void_X_Operation(url: string, payload?: string, method?: string): Promise<void>;
+    protected getCoreStats(): coreStats;
 }
