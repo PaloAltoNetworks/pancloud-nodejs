@@ -4,7 +4,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 const common_1 = require("./common");
-const core_1 = require("./core");
+const emitter_1 = require("./emitter");
 const error_1 = require("./error");
 const timers_1 = require("timers");
 /**
@@ -52,7 +52,7 @@ function is_esFilter(obj) {
  * High-level class that implements an Application Framework Event Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-class EventService extends core_1.coreClass {
+class EventService extends emitter_1.emitter {
     constructor(ops) {
         super(ops);
         this.className = "EventService";
@@ -64,16 +64,7 @@ class EventService extends core_1.coreClass {
         this.ap_sleep = MSLEEP;
         this.polling = false;
         this.eevent = { source: "EventService" };
-        this.esStats = {
-            acks: 0,
-            nacks: 0,
-            deletes: 0,
-            filtergets: 0,
-            filtersets: 0,
-            flushes: 0,
-            polls: 0,
-            records: 0
-        };
+        this.stats = Object.assign({ acks: 0, nacks: 0, deletes: 0, filtergets: 0, filtersets: 0, flushes: 0, polls: 0, records: 0 }, this.stats);
     }
     setChannel(channelId) {
         this.filterUrl = `${this.entryPoint}/${esPath}/${channelId}/filters`;
@@ -95,7 +86,7 @@ class EventService extends core_1.coreClass {
      * @returns the current Event Service filter configuration
      */
     async getFilters() {
-        this.esStats.filtergets++;
+        this.stats.filtergets++;
         let r_json = await this.fetchGetWrap(this.filterUrl);
         this.lastResponse = r_json;
         if (is_esFilter(r_json)) {
@@ -110,7 +101,7 @@ class EventService extends core_1.coreClass {
      * @returns a promise to the current Event Service to ease promise chaining
      */
     async setFilters(fcfg) {
-        this.esStats.filtersets++;
+        this.stats.filtersets++;
         this.popts = (fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO;
         this.ap_sleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP;
         await this.void_X_Operation(this.filterUrl, JSON.stringify(fcfg.filter), 'PUT');
@@ -171,21 +162,21 @@ class EventService extends core_1.coreClass {
      * Performs an `ACK` operation on the Event Service
      */
     async ack() {
-        this.esStats.acks++;
+        this.stats.acks++;
         return this.void_X_Operation(this.ackUrl);
     }
     /**
      * Performs a `NACK` operation on the Event Service
      */
     async nack() {
-        this.esStats.nacks++;
+        this.stats.nacks++;
         return this.void_X_Operation(this.nackUrl);
     }
     /**
      * Performs a `FLUSH` operation on the Event Service
      */
     async flush() {
-        this.esStats.flushes++;
+        this.stats.flushes++;
         return this.void_X_Operation(this.flushUrl);
     }
     /**
@@ -193,7 +184,7 @@ class EventService extends core_1.coreClass {
      * @returns a promise that resolves to an array of {@link esEvent} objects
      */
     async poll() {
-        this.esStats.polls++;
+        this.stats.polls++;
         let body = '{}';
         if (this.popts.pollTimeout != 1000) {
             body = JSON.stringify({ pollTimeout: this.popts.pollTimeout });
@@ -203,7 +194,7 @@ class EventService extends core_1.coreClass {
         if (r_json && typeof r_json == "object" && r_json instanceof Array) {
             if (r_json.every(e => {
                 if (is_esEvent(e)) {
-                    this.esStats.records += e.event.length;
+                    this.stats.records += e.event.length;
                     return true;
                 }
                 return false;
@@ -259,7 +250,7 @@ class EventService extends core_1.coreClass {
         EventService.autoPoll(this);
     }
     getEsStats() {
-        return Object.assign({}, this.esStats, this.getCoreStats());
+        return this.stats;
     }
 }
 exports.EventService = EventService;

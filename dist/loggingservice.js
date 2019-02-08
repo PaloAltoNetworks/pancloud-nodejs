@@ -4,7 +4,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 const common_1 = require("./common");
-const core_1 = require("./core");
+const emitter_1 = require("./emitter");
 const error_1 = require("./error");
 const timers_1 = require("timers");
 /**
@@ -48,7 +48,7 @@ function isJobResult(obj) {
  * High-level class that implements an Application Framework Logging Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-class LoggingService extends core_1.coreClass {
+class LoggingService extends emitter_1.emitter {
     constructor(ops) {
         super(ops);
         this.className = "LoggingService";
@@ -58,14 +58,8 @@ class LoggingService extends core_1.coreClass {
         this.jobQueue = {};
         this.lastProcElement = 0;
         this.pendingQueries = [];
-        this.lsstats = {
-            records: 0,
-            deletes: 0,
-            polls: 0,
-            queries: 0
-        };
+        this.stats = Object.assign({ records: 0, deletes: 0, polls: 0, queries: 0 }, this.stats);
     }
-    ;
     /**
      * Logging Service object factory method
      * @param ops configuration object for the instance to be created
@@ -91,7 +85,7 @@ class LoggingService extends core_1.coreClass {
      * @returns a promise with the Application Framework response
      */
     async query(cfg, CallBack, sleep, fetchTimeout) {
-        this.lsstats.queries++;
+        this.stats.queries++;
         if (sleep) {
             this.ap_sleep = sleep;
         }
@@ -105,7 +99,7 @@ class LoggingService extends core_1.coreClass {
             throw new error_1.PanCloudError(this, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(r_json)}`);
         }
         if (r_json.result.esResult) {
-            this.lsstats.records += r_json.result.esResult.hits.hits.length;
+            this.stats.records += r_json.result.esResult.hits.hits.length;
         }
         if (r_json.queryStatus != "JOB_FAILED") {
             if (CallBack !== undefined) {
@@ -173,7 +167,7 @@ class LoggingService extends core_1.coreClass {
      * @returns a promise with the Application Framework response
      */
     async poll(qid, sequenceNo, maxWaitTime) {
-        this.lsstats.polls++;
+        this.stats.polls++;
         let targetUrl = `${this.url}/${qid}/${sequenceNo}`;
         if (maxWaitTime && maxWaitTime > 0) {
             targetUrl += `?maxWaitTime=${maxWaitTime}`;
@@ -182,7 +176,7 @@ class LoggingService extends core_1.coreClass {
         this.lastResponse = r_json;
         if (isJobResult(r_json)) {
             if (r_json.result.esResult) {
-                this.lsstats.records += r_json.result.esResult.hits.hits.length;
+                this.stats.records += r_json.result.esResult.hits.hits.length;
             }
             return r_json;
         }
@@ -254,7 +248,7 @@ class LoggingService extends core_1.coreClass {
      * @param qid the query id to be cancelled
      */
     delete_query(queryId) {
-        this.lsstats.deletes++;
+        this.stats.deletes++;
         return this.void_X_Operation(`${this.url}/${queryId}`, undefined, "DELETE");
     }
     eventEmitter(j) {
@@ -305,7 +299,7 @@ class LoggingService extends core_1.coreClass {
         return this.delete_query(qid);
     }
     getLsStats() {
-        return Object.assign({}, this.lsstats, this.getCoreStats());
+        return this.stats;
     }
 }
 exports.LoggingService = LoggingService;

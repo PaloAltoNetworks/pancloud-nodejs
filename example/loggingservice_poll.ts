@@ -1,4 +1,4 @@
-import { Credentials, LoggingService, ENTRYPOINT, lsQuery, logLevel } from 'pancloud-nodejs'
+import { embededCredentials, LoggingService, ENTRYPOINT, lsQuery, logLevel } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
 const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
@@ -16,7 +16,7 @@ let query: lsQuery = {
  * Use the loggingservice.js launcher to call this main() function
  */
 export async function main(): Promise<void> {
-    let c = await Credentials.factory({
+    let c = await embededCredentials.factory({
         client_id: c_id,
         client_secret: c_secret,
         refresh_token: r_token,
@@ -24,8 +24,8 @@ export async function main(): Promise<void> {
     })
     let ls = await LoggingService.factory({
         credential: c,
-        entryPoint: entryPoint,
-        level: logLevel.DEBUG
+        // level: logLevel.DEBUG,
+        entryPoint: entryPoint
     })
     let job = await ls.query(query)
     let seq = job.sequenceNo
@@ -40,7 +40,7 @@ export async function main(): Promise<void> {
         }
         try {
             job = await delayedFunc(1000, ls.poll.bind(ls), job.queryId, seq)
-            } catch (loopException) { }
+        } catch (loopException) { }
         if (job.queryStatus == "FINISHED") {
             seq = job.sequenceNo + 1
         }

@@ -174,8 +174,5 @@ class macCorrelator {
         this.db = [];
         return { plain: Object.values(mapped) };
     }
-    getStats() {
-        return this.stats;
-    }
 }
 exports.macCorrelator = macCorrelator;

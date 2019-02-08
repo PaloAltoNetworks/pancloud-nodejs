@@ -3,7 +3,7 @@
  */
 
 import { PATH, isKnownLogType, LOGTYPE, commonLogger } from './common'
-import { coreClass, emitterInterface, coreOptions, l2correlation, coreStats } from './core'
+import { emitter, emitterOptions, emitterInterface, emitterStats, l2correlation } from './emitter'
 import { PanCloudError, isSdkError } from './error'
 import { setTimeout } from 'timers';
 
@@ -28,7 +28,7 @@ function isJobStatus(s: string): s is jobStatus {
 
 let knownIndexes: string[] = ["panw.", "tms."]
 
-export interface lsStats {
+export interface lsStats extends emitterStats {
     queries: number,
     records: number,
     polls: number,
@@ -137,7 +137,7 @@ interface jobEntry {
  * High-level class that implements an Application Framework Logging Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-export class LoggingService extends coreClass {
+export class LoggingService extends emitter {
     private url: string
     private eevent: emitterInterface<any[]>
     private ap_sleep: number
@@ -146,9 +146,9 @@ export class LoggingService extends coreClass {
     private lastProcElement: number
     private pendingQueries: string[]
     private fetchTimeout: number | undefined
-    private lsstats: lsStats
+    protected stats: lsStats
 
-    private constructor(ops: coreOptions) {
+    private constructor(ops: emitterOptions) {
         super(ops)
         this.className = "LoggingService"
         this.url = `${this.entryPoint}/${lsPath}`
@@ -157,20 +157,21 @@ export class LoggingService extends coreClass {
         this.jobQueue = {}
         this.lastProcElement = 0
         this.pendingQueries = []
-        this.lsstats = {
+        this.stats = {
             records: 0,
             deletes: 0,
             polls: 0,
-            queries: 0
+            queries: 0,
+            ...this.stats
         }
-    };
+    }
 
     /**
      * Logging Service object factory method
      * @param ops configuration object for the instance to be created
      * @returns a new Logging Service instance object with the provided configuration
      */
-    static factory(ops: coreOptions): LoggingService {
+    static factory(ops: emitterOptions): LoggingService {
         return new LoggingService(ops)
     }
 
@@ -199,7 +200,7 @@ export class LoggingService extends coreClass {
         },
         sleep?: number,
         fetchTimeout?: number): Promise<jobResult> {
-        this.lsstats.queries++
+        this.stats.queries++
         if (sleep) { this.ap_sleep = sleep }
         this.fetchTimeout = fetchTimeout
         let providedLogType = cfg.logType
@@ -211,7 +212,7 @@ export class LoggingService extends coreClass {
             throw new PanCloudError(this, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(r_json)}`)
         }
         if (r_json.result.esResult) {
-            this.lsstats.records += r_json.result.esResult.hits.hits.length
+            this.stats.records += r_json.result.esResult.hits.hits.length
         }
         if (r_json.queryStatus != "JOB_FAILED") {
             if (CallBack !== undefined) {
@@ -280,7 +281,7 @@ export class LoggingService extends coreClass {
      * @returns a promise with the Application Framework response
      */
     async poll(qid: string, sequenceNo: number, maxWaitTime?: number): Promise<jobResult> {
-        this.lsstats.polls++
+        this.stats.polls++
         let targetUrl = `${this.url}/${qid}/${sequenceNo}`
         if (maxWaitTime && maxWaitTime > 0) {
             targetUrl += `?maxWaitTime=${maxWaitTime}`
@@ -289,7 +290,7 @@ export class LoggingService extends coreClass {
         this.lastResponse = r_json
         if (isJobResult(r_json)) {
             if (r_json.result.esResult) {
-                this.lsstats.records += r_json.result.esResult.hits.hits.length
+                this.stats.records += r_json.result.esResult.hits.hits.length
             }
             return r_json
         }
@@ -360,7 +361,7 @@ export class LoggingService extends coreClass {
      * @param qid the query id to be cancelled 
      */
     public delete_query(queryId: string): Promise<void> {
-        this.lsstats.deletes++
+        this.stats.deletes++
         return this.void_X_Operation(`${this.url}/${queryId}`, undefined, "DELETE")
     }
 
@@ -414,7 +415,7 @@ export class LoggingService extends coreClass {
         return this.delete_query(qid)
     }
 
-    public getLsStats(): lsStats | coreStats {
-        return { ...this.lsstats, ...this.getCoreStats() }
+    public getLsStats(): lsStats {
+        return this.stats
     }
 }
