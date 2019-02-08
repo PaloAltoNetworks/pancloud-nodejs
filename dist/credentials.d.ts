@@ -14,16 +14,27 @@ export interface credOptions {
     redirect_uri?: string;
     code?: string;
 }
+export declare abstract class Credentials {
+    private valid_until;
+    private access_token;
+    className: string;
+    constructor(access_token: string, expires_in?: number);
+    private static valid_until;
+    protected set_access_token(access_token: string, expires_in?: number): void;
+    get_access_token(): string;
+    get_expiration(): number;
+    autoRefresh(): Promise<boolean>;
+    abstract refresh_access_token(): Promise<void>;
+    abstract revoke_tokens(): Promise<void>;
+}
 /**
  * Credential class keeps data and methods needed to maintain Application Framework access token alive
  */
-export declare class Credentials {
-    private access_token;
+export declare class embededCredentials extends Credentials {
     private refresh_token;
     private client_id;
     private client_secret;
     private idp_token_url;
-    private valid_until;
     static className: string;
     /**
      * class constructor not exposed. You must use the static {@link Credentials.factory} instead
@@ -36,7 +47,6 @@ export declare class Credentials {
      * @param idp_token_url Optional. If not provided then the constant {@link IDP_TOKEN_URL} will be used instead
      */
     private constructor();
-    private static expExtractor;
     /**
      * Factory method to instantiate a new {@link Credentials} class based on the options provided
      * @param opt {@link Credentials} class instantiation options
@@ -64,20 +74,6 @@ export declare class Credentials {
      * @returns a new set of tokens
      */
     private static refresh_tokens;
-    /**
-     * Checks if the current `access_token` is expired or close to expire (5 minutes guard) and
-     * tries to refresh it if needed
-     * @returns True if successfully refreshed
-     */
-    autoRefresh(): Promise<boolean>;
-    /**
-     * @returns current `access_token` value
-     */
-    get_access_token(): string;
-    /**
-     * @returns UNIX timestamp of current `access_token` expiration
-     */
-    get_expiration(): number;
     /**
      * Attempts to refresh the current `access_token`. It might throw exceptions
      */

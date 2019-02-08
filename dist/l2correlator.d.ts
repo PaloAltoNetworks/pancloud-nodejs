@@ -1,4 +1,4 @@
-import { emitterInterface } from "./core";
+import { emitterInterface } from "./emitter";
 interface event {
     time_generated: string;
     sessionid: string;
@@ -29,12 +29,11 @@ export declare class macCorrelator {
     private gbAttempt;
     private db;
     private lastTs;
-    private stats;
+    stats: correlationStats;
     constructor(ageout?: number, absoluteTime?: boolean, gbMultiplier?: number);
     private gb;
     private update;
     process(e: emitterInterface<any[]>): procResponse;
     flush(): procResponse;
-    getStats(): correlationStats;
 }
 export {};

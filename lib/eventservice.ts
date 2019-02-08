@@ -3,7 +3,7 @@
  */
 
 import { PATH, LOGTYPE, isKnownLogType, commonLogger } from './common'
-import { coreClass, emitterInterface, coreOptions, l2correlation, coreStats } from './core'
+import { emitter, emitterOptions, emitterInterface, emitterStats, l2correlation } from './emitter'
 import { PanCloudError } from './error'
 import { setTimeout, clearTimeout } from 'timers'
 
@@ -113,11 +113,11 @@ export interface esFilterBuilderCfg {
     flush?: boolean
 }
 
-export interface esOptions {
+export interface esOptions extends emitterOptions {
     channelId?: string,
 }
 
-export interface esStats {
+export interface esStats extends emitterStats {
     records: number,
     polls: number,
     deletes: number,
@@ -132,7 +132,7 @@ export interface esStats {
  * High-level class that implements an Application Framework Event Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-export class EventService extends coreClass {
+export class EventService extends emitter {
     private filterUrl: string
     private pollUrl: string
     private ackUrl: string
@@ -143,9 +143,9 @@ export class EventService extends coreClass {
     private tout: NodeJS.Timeout | undefined
     private polling: boolean
     private eevent: emitterInterface<any[]>
-    private esStats: esStats
+    protected stats: esStats
 
-    private constructor(ops: esOptions & coreOptions) {
+    private constructor(ops: esOptions) {
         super(ops)
         this.className = "EventService"
         if (!ops.channelId) { ops.channelId = 'EventFilter' }
@@ -154,7 +154,7 @@ export class EventService extends coreClass {
         this.ap_sleep = MSLEEP
         this.polling = false
         this.eevent = { source: "EventService" }
-        this.esStats = {
+        this.stats = {
             acks: 0,
             nacks: 0,
             deletes: 0,
@@ -162,7 +162,8 @@ export class EventService extends coreClass {
             filtersets: 0,
             flushes: 0,
             polls: 0,
-            records: 0
+            records: 0,
+            ...this.stats
         }
     }
 
@@ -180,7 +181,7 @@ export class EventService extends coreClass {
      * {@link esOptions}
      * @returns an instantiated {@link EventService} object
      */
-    static factory(esOps: esOptions & coreOptions): EventService {
+    static factory(esOps: esOptions): EventService {
         return new EventService(esOps)
     }
 
@@ -188,7 +189,7 @@ export class EventService extends coreClass {
      * @returns the current Event Service filter configuration
      */
     async getFilters(): Promise<esFilter> {
-        this.esStats.filtergets++
+        this.stats.filtergets++
         let r_json = await this.fetchGetWrap(this.filterUrl);
         this.lastResponse = r_json
         if (is_esFilter(r_json)) {
@@ -204,7 +205,7 @@ export class EventService extends coreClass {
      * @returns a promise to the current Event Service to ease promise chaining
      */
     async setFilters(fcfg: esFilterCfg): Promise<EventService> {
-        this.esStats.filtersets++
+        this.stats.filtersets++
         this.popts = (fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO
         this.ap_sleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP
         await this.void_X_Operation(this.filterUrl, JSON.stringify(fcfg.filter), 'PUT')
@@ -273,7 +274,7 @@ export class EventService extends coreClass {
      * Performs an `ACK` operation on the Event Service
      */
     public async ack(): Promise<void> {
-        this.esStats.acks++
+        this.stats.acks++
         return this.void_X_Operation(this.ackUrl)
     }
 
@@ -281,7 +282,7 @@ export class EventService extends coreClass {
      * Performs a `NACK` operation on the Event Service
      */
     public async nack(): Promise<void> {
-        this.esStats.nacks++
+        this.stats.nacks++
         return this.void_X_Operation(this.nackUrl)
     }
 
@@ -289,7 +290,7 @@ export class EventService extends coreClass {
      * Performs a `FLUSH` operation on the Event Service
      */
     public async flush(): Promise<void> {
-        this.esStats.flushes++
+        this.stats.flushes++
         return this.void_X_Operation(this.flushUrl)
     }
 
@@ -298,7 +299,7 @@ export class EventService extends coreClass {
      * @returns a promise that resolves to an array of {@link esEvent} objects
      */
     public async poll(): Promise<esEvent[]> {
-        this.esStats.polls++
+        this.stats.polls++
         let body: string = '{}'
         if (this.popts.pollTimeout != 1000) {
             body = JSON.stringify({ pollTimeout: this.popts.pollTimeout })
@@ -308,7 +309,7 @@ export class EventService extends coreClass {
         if (r_json && typeof r_json == "object" && r_json instanceof Array) {
             if (r_json.every(e => {
                 if (is_esEvent(e)) {
-                    this.esStats.records += e.event.length
+                    this.stats.records += e.event.length
                     return true
                 }
                 return false
@@ -365,7 +366,7 @@ export class EventService extends coreClass {
         EventService.autoPoll(this)
     }
 
-    public getEsStats(): esStats | coreStats {
-        return { ...this.esStats, ...this.getCoreStats() }
+    public getEsStats(): esStats {
+        return this.stats
     }
 }

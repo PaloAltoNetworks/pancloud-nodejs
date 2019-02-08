@@ -3,7 +3,7 @@
  */
 /// <reference types="node" />
 import { LOGTYPE } from './common';
-import { coreClass, emitterInterface, coreOptions, l2correlation, coreStats } from './core';
+import { emitter, emitterOptions, emitterInterface, emitterStats, l2correlation } from './emitter';
 declare const jStatus: {
     'RUNNING': string;
     'FINISHED': string;
@@ -14,7 +14,7 @@ declare const jStatus: {
  * Convenience type to guide the user to all possible LS JOB status value
  */
 export declare type jobStatus = keyof typeof jStatus;
-export interface lsStats {
+export interface lsStats extends emitterStats {
     queries: number;
     records: number;
     polls: number;
@@ -90,7 +90,7 @@ export interface jobResult {
  * High-level class that implements an Application Framework Logging Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-export declare class LoggingService extends coreClass {
+export declare class LoggingService extends emitter {
     private url;
     private eevent;
     private ap_sleep;
@@ -99,14 +99,14 @@ export declare class LoggingService extends coreClass {
     private lastProcElement;
     private pendingQueries;
     private fetchTimeout;
-    private lsstats;
+    protected stats: lsStats;
     private constructor();
     /**
      * Logging Service object factory method
      * @param ops configuration object for the instance to be created
      * @returns a new Logging Service instance object with the provided configuration
      */
-    static factory(ops: coreOptions): LoggingService;
+    static factory(ops: emitterOptions): LoggingService;
     /**
      * Performs a Logging Service query call and returns a promise with the response.
      * If the "eCallBack" handler is provided then it will be registered into the event topic and
@@ -161,6 +161,6 @@ export declare class LoggingService extends coreClass {
     delete_query(queryId: string): Promise<void>;
     private eventEmitter;
     private emitterCleanup;
-    getLsStats(): lsStats | coreStats;
+    getLsStats(): lsStats;
 }
 export {};

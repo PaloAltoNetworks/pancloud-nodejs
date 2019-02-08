@@ -18,10 +18,62 @@ function isAppFramToken(obj) {
 const IDP_TOKEN_URL = 'https://api.paloaltonetworks.com/api/oauth2/RequestToken';
 const IDP_REVOKE_URL = 'https://api.paloaltonetworks.com/api/oauth2/RevokeToken';
 const IDP_BASE_URL = 'https://identity.paloaltonetworks.com/as/authorization.oauth2';
+class Credentials {
+    constructor(access_token, expires_in) {
+        this.access_token = access_token;
+        this.valid_until = Credentials.valid_until(access_token, expires_in);
+        this.className = "Credentials";
+    }
+    static valid_until(access_token, expires_in) {
+        if (expires_in) {
+            return Math.floor(Date.now() / 1000) + expires_in;
+        }
+        let exp = 0;
+        if (access_token) {
+            let jwtParts = access_token.split('.');
+            if (jwtParts.length != 3) {
+                throw new error_1.PanCloudError(embededCredentials, 'CONFIG', 'invalid JWT Token');
+            }
+            let claim;
+            try {
+                claim = JSON.parse(Buffer.from(jwtParts[1], 'base64').toString());
+                exp = Number.parseInt(claim.exp, 10);
+            }
+            catch (e) {
+                throw error_1.PanCloudError.fromError(embededCredentials, e);
+            }
+        }
+        return exp;
+    }
+    set_access_token(access_token, expires_in) {
+        this.access_token = access_token;
+        this.valid_until = Credentials.valid_until(access_token, expires_in);
+    }
+    get_access_token() {
+        return this.access_token;
+    }
+    get_expiration() {
+        return this.valid_until;
+    }
+    async autoRefresh() {
+        if (Date.now() + 300000 > this.valid_until * 1000) {
+            try {
+                common_1.commonLogger.info(this, 'Attempt to auto-refresh the access token');
+                await this.refresh_access_token();
+                return true;
+            }
+            catch (_a) {
+                common_1.commonLogger.info(this, 'Failed to auto-refresh the access token');
+            }
+        }
+        return false;
+    }
+}
+exports.Credentials = Credentials;
 /**
  * Credential class keeps data and methods needed to maintain Application Framework access token alive
  */
-class Credentials {
+class embededCredentials extends Credentials {
     /**
      * class constructor not exposed. You must use the static {@link Credentials.factory} instead
      * @param client_id Mandatory. Application Framework's `client_id` string
@@ -32,29 +84,12 @@ class Credentials {
      * one time code is provided
      * @param idp_token_url Optional. If not provided then the constant {@link IDP_TOKEN_URL} will be used instead
      */
-    constructor(client_id, client_secret, access_token, refresh_token, idp_token_url) {
+    constructor(client_id, client_secret, access_token, refresh_token, idp_token_url, expires_in) {
+        super(access_token, expires_in);
         this.client_id = client_id;
         this.client_secret = client_secret;
-        this.access_token = access_token;
         this.refresh_token = refresh_token;
-        this.valid_until = Credentials.expExtractor(access_token);
         this.idp_token_url = idp_token_url;
-    }
-    static expExtractor(jwt) {
-        let jwtParts = jwt.split('.');
-        if (jwtParts.length != 3) {
-            throw new error_1.PanCloudError(Credentials, 'CONFIG', 'invalid JWT Token');
-        }
-        let claim;
-        let exp;
-        try {
-            claim = JSON.parse(Buffer.from(jwtParts[1], 'base64').toString());
-            exp = Number.parseInt(claim.exp, 10);
-        }
-        catch (e) {
-            throw error_1.PanCloudError.fromError(Credentials, e);
-        }
-        return exp;
     }
     /**
      * Factory method to instantiate a new {@link Credentials} class based on the options provided
@@ -68,35 +103,34 @@ class Credentials {
             opt.idp_token_url = IDP_TOKEN_URL;
         }
         if (!(opt.refresh_token || opt.code)) {
-            throw new error_1.PanCloudError(Credentials, 'CONFIG', 'Invalid Credentials (code or refresh token missing)');
+            throw new error_1.PanCloudError(embededCredentials, 'CONFIG', 'Invalid Credentials (code or refresh token missing)');
         }
         if (opt.refresh_token && opt.access_token) {
-            return new Credentials(opt.client_id, opt.client_secret, opt.access_token, opt.refresh_token, opt.idp_token_url);
+            return new embededCredentials(opt.client_id, opt.client_secret, opt.access_token, opt.refresh_token, opt.idp_token_url);
         }
         let tk;
         let r_token;
         if (opt.refresh_token) {
             r_token = opt.refresh_token;
-            tk = await Credentials.refresh_tokens(opt.client_id, opt.client_secret, opt.refresh_token, opt.idp_token_url);
+            tk = await embededCredentials.refresh_tokens(opt.client_id, opt.client_secret, opt.refresh_token, opt.idp_token_url);
             if (tk.refresh_token) {
                 r_token = tk.refresh_token;
             }
         }
         else if (opt.code !== undefined && opt.redirect_uri !== undefined) {
-            tk = await Credentials.fetch_tokens(opt.client_id, opt.client_secret, opt.code, opt.idp_token_url, opt.redirect_uri);
+            tk = await embededCredentials.fetch_tokens(opt.client_id, opt.client_secret, opt.code, opt.idp_token_url, opt.redirect_uri);
             if (tk.refresh_token) {
                 r_token = tk.refresh_token;
             }
             else {
-                throw new error_1.PanCloudError(Credentials, 'IDENTITY', 'Missing refresh_token in the response');
+                throw new error_1.PanCloudError(embededCredentials, 'IDENTITY', 'Missing refresh_token in the response');
             }
         }
         else {
-            throw new error_1.PanCloudError(Credentials, 'CONFIG', 'Invalid Credentials (code or redirect_uri missing)');
+            throw new error_1.PanCloudError(embededCredentials, 'CONFIG', 'Invalid Credentials (code or redirect_uri missing)');
         }
-        let vu = parseInt(tk.expires_in);
-        vu = Math.floor(Date.now() / 1000) + (vu ? vu : 0);
-        return new Credentials(opt.client_id, opt.client_secret, tk.access_token, r_token, opt.idp_token_url);
+        let exp_in = parseInt(tk.expires_in);
+        return new embededCredentials(opt.client_id, opt.client_secret, tk.access_token, r_token, opt.idp_token_url, exp_in);
     }
     /**
      * Static class method to exchange a 60 seconds OAUTH2 code for valid credentials
@@ -108,7 +142,7 @@ class Credentials {
      * @returns a new set of tokens
      */
     static async fetch_tokens(client_id, client_secret, code, idp_token_url, redirect_uri) {
-        let res = await common_1.retrier(Credentials, undefined, undefined, node_fetch_1.default, idp_token_url, {
+        let res = await common_1.retrier(embededCredentials, undefined, undefined, node_fetch_1.default, idp_token_url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -123,20 +157,20 @@ class Credentials {
             })
         });
         if (!res.ok) {
-            throw new error_1.PanCloudError(Credentials, 'IDENTITY', `HTTP Error from IDP fetch operation ${res.status} ${res.statusText}`);
+            throw new error_1.PanCloudError(embededCredentials, 'IDENTITY', `HTTP Error from IDP fetch operation ${res.status} ${res.statusText}`);
         }
         let r_json;
         try {
             r_json = await res.json();
         }
         catch (exception) {
-            throw new error_1.PanCloudError(Credentials, 'PARSER', `Invalid JSON fetch response: ${exception.message}`);
+            throw new error_1.PanCloudError(embededCredentials, 'PARSER', `Invalid JSON fetch response: ${exception.message}`);
         }
         if (isAppFramToken(r_json)) {
-            common_1.commonLogger.info(Credentials, 'Authorization token successfully retrieved');
+            common_1.commonLogger.info(embededCredentials, 'Authorization token successfully retrieved');
             return r_json;
         }
-        throw new error_1.PanCloudError(Credentials, 'PARSER', `Unparseable response received from IDP fetch operation: "${JSON.stringify(r_json)}"`);
+        throw new error_1.PanCloudError(embededCredentials, 'PARSER', `Unparseable response received from IDP fetch operation: "${JSON.stringify(r_json)}"`);
     }
     /**
      * Implements the Application Framework OAUTH2 refresh token operation
@@ -147,7 +181,7 @@ class Credentials {
      * @returns a new set of tokens
      */
     static async refresh_tokens(client_id, client_secret, refresh_token, idp_token_url) {
-        let res = await common_1.retrier(Credentials, undefined, undefined, node_fetch_1.default, idp_token_url, {
+        let res = await common_1.retrier(embededCredentials, undefined, undefined, node_fetch_1.default, idp_token_url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -162,59 +196,27 @@ class Credentials {
             timeout: 30000
         });
         if (!res.ok) {
-            throw new error_1.PanCloudError(Credentials, 'IDENTITY', `HTTP Error from IDP refresh operation ${res.status} ${res.statusText}`);
+            throw new error_1.PanCloudError(embededCredentials, 'IDENTITY', `HTTP Error from IDP refresh operation ${res.status} ${res.statusText}`);
         }
         let r_json;
         try {
             r_json = await res.json();
         }
         catch (exception) {
-            throw new error_1.PanCloudError(Credentials, 'PARSER', `Invalid JSON refresh response: ${exception.message}`);
+            throw new error_1.PanCloudError(embededCredentials, 'PARSER', `Invalid JSON refresh response: ${exception.message}`);
         }
         if (isAppFramToken(r_json)) {
-            common_1.commonLogger.info(Credentials, 'Authorization token successfully retrieved', 'IDENTITY');
+            common_1.commonLogger.info(embededCredentials, 'Authorization token successfully retrieved', 'IDENTITY');
             return r_json;
         }
-        throw new error_1.PanCloudError(Credentials, 'PARSER', `Unparseable response received from IDP refresh operation: "${JSON.stringify(r_json)}"`);
-    }
-    /**
-     * Checks if the current `access_token` is expired or close to expire (5 minutes guard) and
-     * tries to refresh it if needed
-     * @returns True if successfully refreshed
-     */
-    async autoRefresh() {
-        if (Date.now() + 300000 > this.valid_until * 1000) {
-            try {
-                common_1.commonLogger.info(Credentials, 'Attempt to auto-refresh the access token');
-                await this.refresh_access_token();
-                return true;
-            }
-            catch (_a) {
-                common_1.commonLogger.info(Credentials, 'Failed to auto-refresh the access token');
-            }
-        }
-        return false;
-    }
-    /**
-     * @returns current `access_token` value
-     */
-    get_access_token() {
-        return this.access_token;
-    }
-    /**
-     * @returns UNIX timestamp of current `access_token` expiration
-     */
-    get_expiration() {
-        return this.valid_until;
+        throw new error_1.PanCloudError(embededCredentials, 'PARSER', `Unparseable response received from IDP refresh operation: "${JSON.stringify(r_json)}"`);
     }
     /**
      * Attempts to refresh the current `access_token`. It might throw exceptions
      */
     async refresh_access_token() {
-        let tk = await Credentials.refresh_tokens(this.client_id, this.client_secret, this.refresh_token, this.idp_token_url);
-        this.access_token = tk.access_token;
-        let vu = parseInt(tk.expires_in);
-        this.valid_until = Math.floor(Date.now() / 1000) + (vu ? vu : 0);
+        let tk = await embededCredentials.refresh_tokens(this.client_id, this.client_secret, this.refresh_token, this.idp_token_url);
+        this.set_access_token(tk.access_token, parseInt(tk.expires_in));
         if (tk.refresh_token) {
             this.refresh_token = tk.refresh_token;
         }
@@ -224,7 +226,7 @@ class Credentials {
      */
     async revoke_tokens() {
         if (!this.refresh_token) {
-            throw new error_1.PanCloudError(Credentials, 'CONFIG', `Not valid refresh token for revoke op: ${this.refresh_token}`);
+            throw new error_1.PanCloudError(embededCredentials, 'CONFIG', `Not valid refresh token for revoke op: ${this.refresh_token}`);
         }
         let res = await node_fetch_1.default(IDP_REVOKE_URL, {
             method: 'POST',
@@ -240,10 +242,10 @@ class Credentials {
             })
         });
         if (res.ok && res.size > 0) {
-            common_1.commonLogger.info(Credentials, 'Credentials(): Authorization token successfully revoked', 'IDENTITY');
+            common_1.commonLogger.info(embededCredentials, 'Credentials(): Authorization token successfully revoked', 'IDENTITY');
         }
-        throw new error_1.PanCloudError(Credentials, 'IDENTITY', `HTTP Error from IDP refresh operation ${res.status} ${res.statusText}`);
+        throw new error_1.PanCloudError(embededCredentials, 'IDENTITY', `HTTP Error from IDP refresh operation ${res.status} ${res.statusText}`);
     }
 }
-Credentials.className = "Credentials";
-exports.Credentials = Credentials;
+embededCredentials.className = "embededCredentials";
+exports.embededCredentials = embededCredentials;

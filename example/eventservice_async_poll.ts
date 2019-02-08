@@ -1,4 +1,4 @@
-import { Credentials, EventService, ENTRYPOINT, esFilterBuilderCfg, emitterInterface, logLevel } from 'pancloud-nodejs'
+import { embededCredentials, EventService, ENTRYPOINT, esFilterBuilderCfg, emitterInterface, logLevel } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
 const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
@@ -24,7 +24,7 @@ let builderCfg: esFilterBuilderCfg = {
  * Use the enventservice.js launcher to call this main() function
  */
 export async function main(): Promise<void> {
-    let c = await Credentials.factory({
+    let c = await embededCredentials.factory({
         client_id: c_id,
         client_secret: c_secret,
         refresh_token: r_token,
@@ -32,8 +32,8 @@ export async function main(): Promise<void> {
     })
     let es = await EventService.factory({
         credential: c,
-        entryPoint: entryPoint,
-        level: logLevel.DEBUG
+        // level: logLevel.DEBUG,
+        entryPoint: entryPoint
     })
     await es.filterBuilder(builderCfg)
     console.log("Set the filter and registered the async event receiver")

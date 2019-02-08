@@ -1,4 +1,4 @@
-import { emitterInterface } from "./core"
+import { emitterInterface } from "./emitter"
 import { LOGTYPE } from "./common"
 
 interface event {
@@ -58,7 +58,7 @@ export class macCorrelator {
     private gbAttempt: number
     private db: dbItem[]
     private lastTs: number
-    private stats: correlationStats
+    stats: correlationStats
 
     constructor(ageout = 120, absoluteTime = false, gbMultiplier = 0) {
         this.ageout = ageout
@@ -231,9 +231,5 @@ export class macCorrelator {
             }, {})
         this.db = []
         return { plain: Object.values(mapped) }
-    }
-
-    public getStats(): correlationStats {
-        return this.stats
     }
 }

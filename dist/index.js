@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 var credentials_1 = require("./credentials");
 exports.Credentials = credentials_1.Credentials;
+exports.embededCredentials = credentials_1.embededCredentials;
 var loggingservice_1 = require("./loggingservice");
 exports.LoggingService = loggingservice_1.LoggingService;
 var eventservice_1 = require("./eventservice");
@@ -11,5 +12,6 @@ exports.ApplicationFrameworkError = error_1.ApplicationFrameworkError;
 exports.isSdkError = error_1.isSdkError;
 var common_1 = require("./common");
 exports.logLevel = common_1.logLevel;
+exports.retrier = common_1.retrier;
 var util_1 = require("./util");
 exports.util = util_1.util;
