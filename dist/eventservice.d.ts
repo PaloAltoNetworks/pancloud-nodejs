@@ -2,7 +2,7 @@
  * High level abstraction of the Application Framework Event Service
  */
 /// <reference types="node" />
-import { LOGTYPE } from './common';
+import { LOGTYPE, ENTRYPOINT } from './common';
 import { emitter, emitterOptions, emitterInterface, emitterStats, l2correlation } from './emitter';
 /**
  * Event Service emitted message interface
@@ -26,7 +26,6 @@ export interface esFilter {
 }
 interface esPollOptions {
     pollTimeout: number;
-    fetchTimeout: number;
     ack: boolean;
 }
 interface esFilterOptions {
@@ -76,11 +75,11 @@ export interface esStats extends emitterStats {
  * and async features. Objects of this class must be obtained using the factory static method
  */
 export declare class EventService extends emitter {
-    private filterUrl;
-    private pollUrl;
-    private ackUrl;
-    private nackUrl;
-    private flushUrl;
+    private filterPath;
+    private pollPath;
+    private ackPath;
+    private nackPath;
+    private flushPath;
     private popts;
     private ap_sleep;
     private tout;
@@ -95,7 +94,7 @@ export declare class EventService extends emitter {
      * {@link esOptions}
      * @returns an instantiated {@link EventService} object
      */
-    static factory(esOps: esOptions): EventService;
+    static factory(entryPoint: ENTRYPOINT, esOps: esOptions): EventService;
     /**
      * @returns the current Event Service filter configuration
      */

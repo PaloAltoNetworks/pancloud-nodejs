@@ -30,8 +30,7 @@ let builderCfg: esFilterBuilderCfg = {
         },
         poolOptions: {
             ack: true,
-            pollTimeout: 1000,
-            fetchTimeout: 45000
+            pollTimeout: 1000
         }
     }
 }
@@ -46,20 +45,20 @@ export async function main(): Promise<void> {
         refresh_token: r_token,
         access_token: a_token
     })
-    es = await EventService.factory({
+    es = await EventService.factory(entryPoint, {
         credential: c,
-        // level: logLevel.DEBUG,
-        entryPoint: entryPoint
+        fetchTimeout: 45000
+        // level: logLevel.DEBUG
     })
     await es.filterBuilder(builderCfg)
     console.log("Successfully started the Event Service notifier")
-    let ls = await LoggingService.factory({
+    let ls = await LoggingService.factory(entryPoint, {
         credential: c,
-        // level: logLevel.DEBUG,
-        entryPoint: entryPoint
+        fetchTimeout: 45000
+        // level: logLevel.DEBUG
     })
-    let job1 = ls.query(query1, { event: receiver }, undefined, 45000) // Schedule query 1 and register the receiver
-    let job2 = ls.query(query2, { event: receiver }, undefined, 45000) // Schedule query 2 with no additional registration
+    let job1 = ls.query(query1, { event: receiver }) // Schedule query 1 and register the receiver
+    let job2 = ls.query(query2, { event: receiver }) // Schedule query 2 with no additional registration
     try {
         let results = await Promise.all([job1, job2])
         results.forEach(j => {

@@ -21,10 +21,9 @@ export async function main(): Promise<void> {
         refresh_token: r_token,
         access_token: a_token
     })
-    let ls = await LoggingService.factory({
+    let ls = await LoggingService.factory(entryPoint, {
         credential: c,
-        // level: logLevel.DEBUG,
-        entryPoint: entryPoint
+        // level: logLevel.DEBUG
     })
     let job = await ls.query(query)
     console.log(`Successfully scheduled the query id: ${job.queryId} with status: ${job.queryStatus}`)

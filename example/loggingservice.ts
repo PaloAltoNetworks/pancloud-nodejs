@@ -5,7 +5,6 @@ import * as loggingservice_async_poll from './loggingservice_async_poll'
 import * as loggingservice_complex_async_poll from './loggingservice_complex_async_poll'
 import * as loggingservice_async_pcap from './loggingservice_async_pcap'
 import * as loggingservice_async_dns_poll from './loggingservice_async_dns_poll'
-import * as loggingservice_correlation from './loggingservice_correlation_async_poll'
 import * as oa2 from './oa2s_credential'
 
 
@@ -15,9 +14,7 @@ const examples: { [i: string]: () => Promise<void> } = {
     "ASYNC_POLL": loggingservice_async_poll.main,
     "ASYNC_DNS_POLL": loggingservice_async_dns_poll.main,
     "ASYNC_PCAP": loggingservice_async_pcap.main,
-    "COMPLEX_ASYNC_POLL": loggingservice_complex_async_poll.main,
-    "CORRELATION_POLL": loggingservice_correlation.main,
-    "oa2": oa2.main
+    "COMPLEX_ASYNC_POLL": loggingservice_complex_async_poll.main
 }
 
 if (process.argv.length < 3 || !Object.keys(examples).includes(process.argv[2])) {

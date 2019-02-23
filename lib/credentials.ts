@@ -10,16 +10,26 @@ import { commonLogger, retrier } from './common'
 /**
  * Represents an Application Framework credential set
  */
-interface appFrameworkTokens {
+interface idpResponse {
     access_token: string, // access token
     refresh_token?: string, // refresh token
     expires_in: string // expiration in seconds
 }
 
-function isAppFramToken(obj: any): obj is appFrameworkTokens {
+function isIdpResponse(obj: any): obj is idpResponse {
     return (typeof obj.access_token == 'string' &&
         typeof obj.expires_in == 'string' &&
         (obj.refresh_tokens === undefined || typeof obj.refresh_tokens == 'string'))
+}
+
+interface idpErrorResponse {
+    error: string
+    error_description: string
+}
+
+function isIdpErrorResponse(obj: any): obj is idpErrorResponse {
+    return (obj.error !== undefined && typeof obj.error == 'string' &&
+        obj.error_description !== undefined && typeof obj.error_description == 'string')
 }
 
 /**
@@ -151,7 +161,7 @@ export class embededCredentials extends Credentials {
                 opt.access_token, opt.refresh_token,
                 opt.idp_token_url)
         }
-        let tk: appFrameworkTokens
+        let tk: idpResponse
         let r_token: string
         if (opt.refresh_token) {
             r_token = opt.refresh_token
@@ -189,7 +199,7 @@ export class embededCredentials extends Credentials {
         client_secret: string,
         code: string,
         idp_token_url: string,
-        redirect_uri: string): Promise<appFrameworkTokens> {
+        redirect_uri: string): Promise<idpResponse> {
         let res = await retrier(embededCredentials, undefined, undefined, fetch, idp_token_url, {
             method: 'POST',
             headers: {
@@ -213,9 +223,12 @@ export class embededCredentials extends Credentials {
         } catch (exception) {
             throw new PanCloudError(embededCredentials, 'PARSER', `Invalid JSON fetch response: ${exception.message}`)
         }
-        if (isAppFramToken(r_json)) {
+        if (isIdpResponse(r_json)) {
             commonLogger.info(embededCredentials, 'Authorization token successfully retrieved')
             return r_json
+        }
+        if (isIdpErrorResponse(r_json)) {
+            throw new PanCloudError(embededCredentials, 'IDENTITY', r_json.error_description)
         }
         throw new PanCloudError(embededCredentials, 'PARSER', `Unparseable response received from IDP fetch operation: "${JSON.stringify(r_json)}"`)
     }
@@ -232,7 +245,7 @@ export class embededCredentials extends Credentials {
         client_id: string,
         client_secret: string,
         refresh_token: string,
-        idp_token_url: string): Promise<appFrameworkTokens> {
+        idp_token_url: string): Promise<idpResponse> {
         let res = await retrier(embededCredentials, undefined, undefined, fetch, idp_token_url, {
             method: 'POST',
             headers: {
@@ -256,9 +269,12 @@ export class embededCredentials extends Credentials {
         } catch (exception) {
             throw new PanCloudError(embededCredentials, 'PARSER', `Invalid JSON refresh response: ${exception.message}`)
         }
-        if (isAppFramToken(r_json)) {
+        if (isIdpResponse(r_json)) {
             commonLogger.info(embededCredentials, 'Authorization token successfully retrieved', 'IDENTITY')
             return r_json
+        }
+        if (isIdpErrorResponse(r_json)) {
+            throw new PanCloudError(embededCredentials, 'IDENTITY', r_json.error_description)
         }
         throw new PanCloudError(embededCredentials, 'PARSER', `Unparseable response received from IDP refresh operation: "${JSON.stringify(r_json)}"`)
     }

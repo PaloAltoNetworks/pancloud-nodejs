@@ -2,7 +2,8 @@
  * High level abstraction of the Application Framework Event Service
  */
 
-import { PATH, LOGTYPE, isKnownLogType, commonLogger } from './common'
+import { URL } from 'url'
+import { PATH, LOGTYPE, isKnownLogType, commonLogger, ENTRYPOINT } from './common'
 import { emitter, emitterOptions, emitterInterface, emitterStats, l2correlation } from './emitter'
 import { PanCloudError } from './error'
 import { setTimeout, clearTimeout } from 'timers'
@@ -16,7 +17,7 @@ const esPath: PATH = "event-service/v1/channels"
 /**
  * Default Event Server {@link esPollOptions} options
  */
-let DEFAULT_PO: esPollOptions = { ack: false, pollTimeout: 1000, fetchTimeout: 45000 }
+let DEFAULT_PO: esPollOptions = { ack: false, pollTimeout: 1000 }
 let invalidTables: LOGTYPE[] = ["tms.analytics", "tms.config", "tms.system", "tms.threat"]
 
 /**
@@ -77,7 +78,6 @@ function is_esFilter(obj: any): obj is esFilter {
 
 interface esPollOptions {
     pollTimeout: number,
-    fetchTimeout: number,
     ack: boolean
 }
 
@@ -114,7 +114,7 @@ export interface esFilterBuilderCfg {
 }
 
 export interface esOptions extends emitterOptions {
-    channelId?: string,
+    channelId?: string
 }
 
 export interface esStats extends emitterStats {
@@ -133,11 +133,11 @@ export interface esStats extends emitterStats {
  * and async features. Objects of this class must be obtained using the factory static method
  */
 export class EventService extends emitter {
-    private filterUrl: string
-    private pollUrl: string
-    private ackUrl: string
-    private nackUrl: string
-    private flushUrl: string
+    private filterPath: string
+    private pollPath: string
+    private ackPath: string
+    private nackPath: string
+    private flushPath: string
     private popts: esPollOptions
     private ap_sleep: number
     private tout: NodeJS.Timeout | undefined
@@ -145,8 +145,8 @@ export class EventService extends emitter {
     private eevent: emitterInterface<any[]>
     protected stats: esStats
 
-    private constructor(ops: esOptions) {
-        super(ops)
+    private constructor(baseUrl: string, ops: esOptions) {
+        super(baseUrl, ops)
         this.className = "EventService"
         if (!ops.channelId) { ops.channelId = 'EventFilter' }
         this.setChannel(ops.channelId)
@@ -168,11 +168,11 @@ export class EventService extends emitter {
     }
 
     private setChannel(channelId: string): void {
-        this.filterUrl = `${this.entryPoint}/${esPath}/${channelId}/filters`
-        this.pollUrl = `${this.entryPoint}/${esPath}/${channelId}/poll`
-        this.ackUrl = `${this.entryPoint}/${esPath}/${channelId}/ack`
-        this.nackUrl = `${this.entryPoint}/${esPath}/${channelId}/nack`
-        this.flushUrl = `${this.entryPoint}/${esPath}/${channelId}/flush`
+        this.filterPath = `/${channelId}/filters`
+        this.pollPath = `/${channelId}/poll`
+        this.ackPath = `/${channelId}/ack`
+        this.nackPath = `/${channelId}/nack`
+        this.flushPath = `/${channelId}/flush`
     }
 
     /**
@@ -181,8 +181,8 @@ export class EventService extends emitter {
      * {@link esOptions}
      * @returns an instantiated {@link EventService} object
      */
-    static factory(esOps: esOptions): EventService {
-        return new EventService(esOps)
+    static factory(entryPoint: ENTRYPOINT, esOps: esOptions): EventService {
+        return new EventService(new URL(esPath, entryPoint).toString(), esOps)
     }
 
     /**
@@ -190,7 +190,7 @@ export class EventService extends emitter {
      */
     async getFilters(): Promise<esFilter> {
         this.stats.filtergets++
-        let r_json = await this.fetchGetWrap(this.filterUrl);
+        let r_json = await this.fetchGetWrap(this.filterPath);
         this.lastResponse = r_json
         if (is_esFilter(r_json)) {
             return r_json
@@ -208,7 +208,7 @@ export class EventService extends emitter {
         this.stats.filtersets++
         this.popts = (fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO
         this.ap_sleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP
-        await this.void_X_Operation(this.filterUrl, JSON.stringify(fcfg.filter), 'PUT')
+        await this.void_X_Operation(this.filterPath, JSON.stringify(fcfg.filter), 'PUT')
         if (fcfg.filterOptions.CallBack) {
             this.newEmitter(fcfg.filterOptions.CallBack.event, fcfg.filterOptions.CallBack.pcap, fcfg.filterOptions.CallBack.corr)
             EventService.autoPoll(this)
@@ -275,7 +275,7 @@ export class EventService extends emitter {
      */
     public async ack(): Promise<void> {
         this.stats.acks++
-        return this.void_X_Operation(this.ackUrl)
+        return this.void_X_Operation(this.ackPath)
     }
 
     /**
@@ -283,7 +283,7 @@ export class EventService extends emitter {
      */
     public async nack(): Promise<void> {
         this.stats.nacks++
-        return this.void_X_Operation(this.nackUrl)
+        return this.void_X_Operation(this.nackPath)
     }
 
     /**
@@ -291,7 +291,7 @@ export class EventService extends emitter {
      */
     public async flush(): Promise<void> {
         this.stats.flushes++
-        return this.void_X_Operation(this.flushUrl)
+        return this.void_X_Operation(this.flushPath)
     }
 
     /**
@@ -304,7 +304,7 @@ export class EventService extends emitter {
         if (this.popts.pollTimeout != 1000) {
             body = JSON.stringify({ pollTimeout: this.popts.pollTimeout })
         }
-        let r_json = await this.fetchPostWrap(this.pollUrl, body, this.popts.fetchTimeout);
+        let r_json = await this.fetchPostWrap(this.pollPath, body);
         this.lastResponse = r_json
         if (r_json && typeof r_json == "object" && r_json instanceof Array) {
             if (r_json.every(e => {

@@ -20,10 +20,6 @@ export interface coreOptions {
      */
     credential: Credentials,
     /**
-     * Master API entry point to be used by the coreClass instance
-     */
-    entryPoint: string,
-    /**
      * Toggle the access_token auto-refresh feature
      */
     autoRefresh?: boolean,
@@ -39,6 +35,7 @@ export interface coreOptions {
      * Delay (in milliseconds) between retry attempts
      */
     retrierDelay?: number
+    fetchTimeout?: number | undefined
 }
 
 /**
@@ -53,11 +50,12 @@ export class coreClass {
     /**
      * Master Application Framework API entry point
      */
-    protected entryPoint: string
+    protected baseUrl: string
     /**
      * Keeps the HTTP headers used by the user agent. mainly used to keep the Authorization header (bearer access token)
      */
     protected fetchHeaders: { [i: string]: string }
+    private fetchTimeout: number | undefined
     private autoR: boolean
     private retrierCount?: number
     private retrierDelay?: number
@@ -69,10 +67,10 @@ export class coreClass {
      * 
      * @param ops configuration options for this instance
      */
-    protected constructor(ops: coreOptions) {
+    protected constructor(baseUrl: string, ops: coreOptions) {
         this.className = "coreClass"
         this.cred = ops.credential
-        this.entryPoint = ops.entryPoint
+        this.baseUrl = baseUrl
         if (ops.level != undefined && ops.level != logLevel.INFO) {
             commonLogger.level = ops.level
         }
@@ -83,6 +81,7 @@ export class coreClass {
         }
         this.retrierCount = ops.retrierCount
         this.retrierDelay = ops.retrierDelay
+        this.fetchTimeout = ops.fetchTimeout
         this.stats = {
             apiTransactions: 0
         }
@@ -117,15 +116,16 @@ export class coreClass {
         }
     }
 
-    private async fetchXWrap(url: string, method: string, body?: string, timeout?: number): Promise<any> {
+    private async fetchXWrap(method: string, path?: string, body?: string): Promise<any> {
+        let url = this.baseUrl + ((path) ? path : '')
         this.stats.apiTransactions++
         await this.checkAutoRefresh()
         let rinit: fetch.RequestInit = {
             headers: this.fetchHeaders,
             method: method
         }
-        if (timeout) {
-            rinit.timeout = timeout
+        if (this.fetchTimeout) {
+            rinit.timeout = this.fetchTimeout
         }
         if (body) {
             rinit.body = body
@@ -160,36 +160,36 @@ export class coreClass {
      * class configuration properties
      * @returns the object returned by the Application Framework
      */
-    protected async fetchGetWrap(url: string, timeout?: number): Promise<any> {
-        return await this.fetchXWrap(url, "GET", undefined, timeout)
+    protected async fetchGetWrap(path?: string): Promise<any> {
+        return await this.fetchXWrap("GET", path, undefined)
     }
 
     /**
      * Convenience method that abstracts a POST operation to the Application Framework
      */
-    protected async fetchPostWrap(url: string, body?: string, timeout?: number): Promise<any> {
-        return await this.fetchXWrap(url, "POST", body, timeout)
+    protected async fetchPostWrap(path?: string, body?: string): Promise<any> {
+        return await this.fetchXWrap("POST", path, body)
     }
 
     /**
      * Convenience method that abstracts a PUT operation to the Application Framework
      */
-    protected async fetchPutWrap(url: string, body?: string, timeout?: number): Promise<any> {
-        return await this.fetchXWrap(url, "PUT", body, timeout)
+    protected async fetchPutWrap(path?: string, body?: string): Promise<any> {
+        return await this.fetchXWrap("PUT", path, body)
     }
 
     /**
      * Convenience method that abstracts a DELETE operation to the Application Framework
      */
-    protected async fetchDeleteWrap(url: string, timeout?: number): Promise<any> {
-        return await this.fetchXWrap(url, "DELETE", undefined, timeout)
+    protected async fetchDeleteWrap(path?: string): Promise<any> {
+        return await this.fetchXWrap("DELETE", path, undefined)
     }
 
     /**
      * Convenience method that abstracts a DELETE operation to the Application Framework
      */
-    protected async void_X_Operation(url: string, payload?: string, method = "POST"): Promise<void> {
-        let r_json = await this.fetchXWrap(url, method, payload);
+    protected async void_X_Operation(path?: string, payload?: string, method = "POST"): Promise<void> {
+        let r_json = await this.fetchXWrap(method, path, payload);
         this.lastResponse = r_json
     }
 }

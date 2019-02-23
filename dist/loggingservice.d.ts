@@ -2,13 +2,15 @@
  * High level abstraction of the Application Framework Logging Service
  */
 /// <reference types="node" />
-import { LOGTYPE } from './common';
+import { LOGTYPE, ENTRYPOINT } from './common';
 import { emitter, emitterOptions, emitterInterface, emitterStats, l2correlation } from './emitter';
+import { sdkErr } from './error';
 declare const jStatus: {
     'RUNNING': string;
     'FINISHED': string;
     'JOB_FINISHED': string;
     'JOB_FAILED': string;
+    'CANCELLED': string;
 };
 /**
  * Convenience type to guide the user to all possible LS JOB status value
@@ -91,14 +93,12 @@ export interface jobResult {
  * and async features. Objects of this class must be obtained using the factory static method
  */
 export declare class LoggingService extends emitter {
-    private url;
     private eevent;
     private ap_sleep;
     private tout;
     private jobQueue;
     private lastProcElement;
     private pendingQueries;
-    private fetchTimeout;
     protected stats: lsStats;
     private constructor();
     /**
@@ -106,7 +106,7 @@ export declare class LoggingService extends emitter {
      * @param ops configuration object for the instance to be created
      * @returns a new Logging Service instance object with the provided configuration
      */
-    static factory(ops: emitterOptions): LoggingService;
+    static factory(entryPoint: ENTRYPOINT, ops: emitterOptions): LoggingService;
     /**
      * Performs a Logging Service query call and returns a promise with the response.
      * If the "eCallBack" handler is provided then it will be registered into the event topic and
@@ -127,7 +127,7 @@ export declare class LoggingService extends emitter {
         event?: ((e: emitterInterface<any[]>) => void);
         pcap?: ((p: emitterInterface<Buffer>) => void);
         corr?: ((e: emitterInterface<l2correlation[]>) => void);
-    }, sleep?: number, fetchTimeout?: number): Promise<jobResult>;
+    }, sleep?: number): Promise<jobResult>;
     /**
      * Used for synchronous operations (when the auto-poll feature of a query is not used)
      * @param qid the query id to poll results from
@@ -153,7 +153,7 @@ export declare class LoggingService extends emitter {
      * User can use this method to cancel (remove) a query from the auto-poll queue
      * @param qid query id to be cancelled
      */
-    cancelPoll(qid: string, reject: (r: any) => void, cause?: Error): void;
+    cancelPoll(qid: string, err?: sdkErr): Promise<void>;
     /**
      * Use this method to cancel a running query
      * @param qid the query id to be cancelled

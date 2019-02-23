@@ -46,7 +46,7 @@ export declare class emitter extends coreClass {
     l2engine: macCorrelator;
     className: string;
     protected stats: emitterStats;
-    protected constructor(ops: emitterOptions);
+    protected constructor(baseUrl: string, ops: emitterOptions);
     private registerListener;
     private unregisterListener;
     /**

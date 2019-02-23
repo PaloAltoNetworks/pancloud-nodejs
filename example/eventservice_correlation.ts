@@ -1,4 +1,4 @@
-import { embededCredentials, EventService, ENTRYPOINT, esFilterBuilderCfg, emitterInterface, logLevel, l2correlation } from 'pancloud-nodejs'
+import { embededCredentials, EventService, ENTRYPOINT, emitterInterface, l2correlation, esFilterBuilderCfg } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
 const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
@@ -13,11 +13,9 @@ let builderCfg: esFilterBuilderCfg = {
         },
         poolOptions: {
             ack: true,
-            pollTimeout: 1000,
-            fetchTimeout: 45000
+            pollTimeout: 1000
         }
-    },
-    flush: true
+    }
 }
 
 /**
@@ -30,40 +28,36 @@ export async function main(): Promise<void> {
         refresh_token: r_token,
         access_token: a_token
     })
-    let es = await EventService.factory({
+    let es = await EventService.factory(entryPoint, {
         credential: c,
-        entryPoint: entryPoint,
-        // level: logLevel.DEBUG,
-        l2Corr: {
-            timeWindow: 120,
-            gcMultiplier: 100
-        }
+        fetchTimeout: 45000
+        // level: logLevel.DEBUG
     })
     await es.filterBuilder(builderCfg)
-    console.log("Set the filter and registered the async pcap receiver")
+    console.log("Set the filter and registered the async event receiver")
     await new Promise<void>(resolve => {
         setTimeout(() => {
             console.log('\n1 minute timer expired. Pausing the poller')
             es.pause()
             resolve()
-        }, 60000)
+        }, 120000)
     })
     await es.clearFilter(true)
-    es.l2CorrFlush()
     console.log("Cleared the filter and flushed the channel")
+    console.log("Event Service stats")
     console.log(JSON.stringify(es.getEsStats(), undefined, " "))
-    console.log(JSON.stringify(l2l3map, undefined, "."))
 }
 
 let l2l3map: { l2src: { [l2: string]: { [v: string]: boolean } }, l2dst: { [l2: string]: { [v: string]: boolean } } } = {
     l2dst: {}, l2src: {}
 }
 
-let correlatedEvents = 0
+let corrEventCounter = 0
+
 function corrReceicer(e: emitterInterface<l2correlation[]>): void {
-    correlatedEvents += (e.message) ? e.message.length : 0
-    console.log(`${correlatedEvents} correlated events received so far`)
     if (e.message) {
+        corrEventCounter += e.message.length
+        console.log(`${corrEventCounter} correlation events received so far`)
         e.message.forEach(x => {
             if (x["extended-traffic-log-mac"] in l2l3map.l2src) {
                 l2l3map.l2src[x["extended-traffic-log-mac"]][x.src] = true
@@ -77,4 +71,4 @@ function corrReceicer(e: emitterInterface<l2correlation[]>): void {
             }
         })
     }
-}
+}   

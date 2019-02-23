@@ -5,12 +5,13 @@ const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
 let now = Math.floor(Date.now() / 1000)
 
 let query: lsQuery = {
-    query: "select * from panw.dpi where subtype='dns' limit 4",
+    query: "select * from panw.dpi where subtype='dns' limit 40",
     startTime: now - 3600,
     endTime: now,
     maxWaitTime: 1000
 }
 
+let decodingErrors = 0
 /**
  * Use the loggingservice.js launcher to call this main() function
  */
@@ -21,17 +22,24 @@ export async function main(): Promise<void> {
         refresh_token: r_token,
         access_token: a_token
     })
-    let ls = await LoggingService.factory({
+    let ls = await LoggingService.factory(entryPoint, {
         credential: c,
-        // level: logLevel.DEBUG,
-        entryPoint: entryPoint
+        fetchTimeout: 45000
+        // level: logLevel.DEBUG
     })
-    await ls.query(query, { event: receiver }, undefined, 45000) // Schedule query 1 and register the receiver
+    await ls.query(query, { event: receiver }) // Schedule query 1 and register the receiver
+    console.log("Logging Service stats")
+    console.log(JSON.stringify(ls.getLsStats(), undefined, " "))
+    console.log(`DNS Decoding Errorr: ${decodingErrors}`)
 }
 
 function receiver(e: emitterInterface<any[]>): void {
     if (e.message) {
-        e.message.forEach(x => { util.dnsDecode(x) })
+        e.message.forEach(x => {
+            if (!util.dnsDecode(x)) {
+                decodingErrors++
+            }
+        })
         console.log(JSON.stringify(e, undefined, ' '))
     }
 }

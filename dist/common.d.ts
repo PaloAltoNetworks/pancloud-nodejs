@@ -55,7 +55,7 @@ export declare type ENTRYPOINT = 'https://api.eu.paloaltonetworks.com' | 'https:
 /**
  * Convenience type to guide the developer using the right paths
  */
-export declare type PATH = "event-service/v1/channels" | "logging-service/v1/queries";
+export declare type PATH = "event-service/v1/channels" | "logging-service/v1/queries" | "directory-sync-service/v1";
 /**
  * Convenience type to guide the developer using the common log types
  */

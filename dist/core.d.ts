@@ -12,10 +12,6 @@ export interface coreOptions {
      */
     credential: Credentials;
     /**
-     * Master API entry point to be used by the coreClass instance
-     */
-    entryPoint: string;
-    /**
      * Toggle the access_token auto-refresh feature
      */
     autoRefresh?: boolean;
@@ -31,6 +27,7 @@ export interface coreOptions {
      * Delay (in milliseconds) between retry attempts
      */
     retrierDelay?: number;
+    fetchTimeout?: number | undefined;
 }
 /**
  * This class should not be used directly. It is meant to be extended. Use higher-level classes like LoggingService
@@ -44,13 +41,14 @@ export declare class coreClass {
     /**
      * Master Application Framework API entry point
      */
-    protected entryPoint: string;
+    protected baseUrl: string;
     /**
      * Keeps the HTTP headers used by the user agent. mainly used to keep the Authorization header (bearer access token)
      */
     protected fetchHeaders: {
         [i: string]: string;
     };
+    private fetchTimeout;
     private autoR;
     private retrierCount?;
     private retrierDelay?;
@@ -61,7 +59,7 @@ export declare class coreClass {
      *
      * @param ops configuration options for this instance
      */
-    protected constructor(ops: coreOptions);
+    protected constructor(baseUrl: string, ops: coreOptions);
     /**
      * Prepares the HTTP headers. Mainly used to keep the Autorization header (bearer access-token)
      */
@@ -81,21 +79,21 @@ export declare class coreClass {
      * class configuration properties
      * @returns the object returned by the Application Framework
      */
-    protected fetchGetWrap(url: string, timeout?: number): Promise<any>;
+    protected fetchGetWrap(path?: string): Promise<any>;
     /**
      * Convenience method that abstracts a POST operation to the Application Framework
      */
-    protected fetchPostWrap(url: string, body?: string, timeout?: number): Promise<any>;
+    protected fetchPostWrap(path?: string, body?: string): Promise<any>;
     /**
      * Convenience method that abstracts a PUT operation to the Application Framework
      */
-    protected fetchPutWrap(url: string, body?: string, timeout?: number): Promise<any>;
+    protected fetchPutWrap(path?: string, body?: string): Promise<any>;
     /**
      * Convenience method that abstracts a DELETE operation to the Application Framework
      */
-    protected fetchDeleteWrap(url: string, timeout?: number): Promise<any>;
+    protected fetchDeleteWrap(path?: string): Promise<any>;
     /**
      * Convenience method that abstracts a DELETE operation to the Application Framework
      */
-    protected void_X_Operation(url: string, payload?: string, method?: string): Promise<void>;
+    protected void_X_Operation(path?: string, payload?: string, method?: string): Promise<void>;
 }

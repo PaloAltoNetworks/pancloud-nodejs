@@ -73,7 +73,7 @@ export class PanCloudError extends Error implements sdkErrorObj {
     sourceClass: string
 
     constructor(source: pancloudClass, code: errCodes, message: string) {
-        super()
+        super(message)
         this.errorCode = code
         this.errorMessage = message
         this.sourceClass = source.className
