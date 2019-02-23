@@ -21,17 +21,19 @@ export async function main(): Promise<void> {
         refresh_token: r_token,
         access_token: a_token
     })
-    let ls = await LoggingService.factory({
+    let ls = await LoggingService.factory(entryPoint, {
         credential: c,
-        // level: logLevel.DEBUG,
-        entryPoint: entryPoint
+        fetchTimeout: 45000
+        // level: logLevel.DEBUG
     })
     try {
-        let result = await ls.query(query, { event: receiver }, undefined, 45000)
+        let result = await ls.query(query, { event: receiver })
         console.log(`Job ${result.queryId} completed with status ${result.queryStatus}`)
     } catch (e) {
         console.log(`Something went wrong with a LS query ${e}`)
     }
+    console.log("Logging Service stats")
+    console.log(JSON.stringify(ls.getLsStats(), undefined, " "))
 }
 
 let lQid = ""

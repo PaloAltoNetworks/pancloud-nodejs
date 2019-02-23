@@ -14,7 +14,7 @@ export declare class util {
      * @param event Any Application Framework event object. Only the ones with type == 'DPI' and
      * subtype == 'dns' will be processed
      */
-    static dnsDecode(event: any): void;
+    static dnsDecode(event: any): boolean;
     /**
     * Converts a the pcap base64 string found on some Application Framework events into
     * a pcap file payload

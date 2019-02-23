@@ -13,10 +13,9 @@ export async function main(): Promise<void> {
         refresh_token: r_token,
         access_token: a_token
     })
-    let es = await EventService.factory({
+    let es = await EventService.factory(entryPoint, {
         credential: c,
-        // level: logLevel.DEBUG,
-        entryPoint: entryPoint
+        // level: logLevel.DEBUG
     })
     await es.flush()
     console.log("Successfully flushed the channel")

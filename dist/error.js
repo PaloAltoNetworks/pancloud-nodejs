@@ -43,7 +43,7 @@ class ApplicationFrameworkError extends Error {
 exports.ApplicationFrameworkError = ApplicationFrameworkError;
 class PanCloudError extends Error {
     constructor(source, code, message) {
-        super();
+        super(message);
         this.errorCode = code;
         this.errorMessage = message;
         this.sourceClass = source.className;

@@ -3,6 +3,7 @@
  * High level abstraction of the Application Framework Event Service
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+const url_1 = require("url");
 const common_1 = require("./common");
 const emitter_1 = require("./emitter");
 const error_1 = require("./error");
@@ -15,7 +16,7 @@ const esPath = "event-service/v1/channels";
 /**
  * Default Event Server {@link esPollOptions} options
  */
-let DEFAULT_PO = { ack: false, pollTimeout: 1000, fetchTimeout: 45000 };
+let DEFAULT_PO = { ack: false, pollTimeout: 1000 };
 let invalidTables = ["tms.analytics", "tms.config", "tms.system", "tms.threat"];
 function is_esEvent(obj) {
     if (obj && typeof obj == "object") {
@@ -53,8 +54,8 @@ function is_esFilter(obj) {
  * and async features. Objects of this class must be obtained using the factory static method
  */
 class EventService extends emitter_1.emitter {
-    constructor(ops) {
-        super(ops);
+    constructor(baseUrl, ops) {
+        super(baseUrl, ops);
         this.className = "EventService";
         if (!ops.channelId) {
             ops.channelId = 'EventFilter';
@@ -67,11 +68,11 @@ class EventService extends emitter_1.emitter {
         this.stats = Object.assign({ acks: 0, nacks: 0, deletes: 0, filtergets: 0, filtersets: 0, flushes: 0, polls: 0, records: 0 }, this.stats);
     }
     setChannel(channelId) {
-        this.filterUrl = `${this.entryPoint}/${esPath}/${channelId}/filters`;
-        this.pollUrl = `${this.entryPoint}/${esPath}/${channelId}/poll`;
-        this.ackUrl = `${this.entryPoint}/${esPath}/${channelId}/ack`;
-        this.nackUrl = `${this.entryPoint}/${esPath}/${channelId}/nack`;
-        this.flushUrl = `${this.entryPoint}/${esPath}/${channelId}/flush`;
+        this.filterPath = `/${channelId}/filters`;
+        this.pollPath = `/${channelId}/poll`;
+        this.ackPath = `/${channelId}/ack`;
+        this.nackPath = `/${channelId}/nack`;
+        this.flushPath = `/${channelId}/flush`;
     }
     /**
      * Static factory method to instantiate an Event Service object
@@ -79,15 +80,15 @@ class EventService extends emitter_1.emitter {
      * {@link esOptions}
      * @returns an instantiated {@link EventService} object
      */
-    static factory(esOps) {
-        return new EventService(esOps);
+    static factory(entryPoint, esOps) {
+        return new EventService(new url_1.URL(esPath, entryPoint).toString(), esOps);
     }
     /**
      * @returns the current Event Service filter configuration
      */
     async getFilters() {
         this.stats.filtergets++;
-        let r_json = await this.fetchGetWrap(this.filterUrl);
+        let r_json = await this.fetchGetWrap(this.filterPath);
         this.lastResponse = r_json;
         if (is_esFilter(r_json)) {
             return r_json;
@@ -104,7 +105,7 @@ class EventService extends emitter_1.emitter {
         this.stats.filtersets++;
         this.popts = (fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO;
         this.ap_sleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP;
-        await this.void_X_Operation(this.filterUrl, JSON.stringify(fcfg.filter), 'PUT');
+        await this.void_X_Operation(this.filterPath, JSON.stringify(fcfg.filter), 'PUT');
         if (fcfg.filterOptions.CallBack) {
             this.newEmitter(fcfg.filterOptions.CallBack.event, fcfg.filterOptions.CallBack.pcap, fcfg.filterOptions.CallBack.corr);
             EventService.autoPoll(this);
@@ -163,21 +164,21 @@ class EventService extends emitter_1.emitter {
      */
     async ack() {
         this.stats.acks++;
-        return this.void_X_Operation(this.ackUrl);
+        return this.void_X_Operation(this.ackPath);
     }
     /**
      * Performs a `NACK` operation on the Event Service
      */
     async nack() {
         this.stats.nacks++;
-        return this.void_X_Operation(this.nackUrl);
+        return this.void_X_Operation(this.nackPath);
     }
     /**
      * Performs a `FLUSH` operation on the Event Service
      */
     async flush() {
         this.stats.flushes++;
-        return this.void_X_Operation(this.flushUrl);
+        return this.void_X_Operation(this.flushPath);
     }
     /**
      * Performs a `POLL` operation on the Event Service
@@ -189,7 +190,7 @@ class EventService extends emitter_1.emitter {
         if (this.popts.pollTimeout != 1000) {
             body = JSON.stringify({ pollTimeout: this.popts.pollTimeout });
         }
-        let r_json = await this.fetchPostWrap(this.pollUrl, body, this.popts.fetchTimeout);
+        let r_json = await this.fetchPostWrap(this.pollPath, body);
         this.lastResponse = r_json;
         if (r_json && typeof r_json == "object" && r_json instanceof Array) {
             if (r_json.every(e => {

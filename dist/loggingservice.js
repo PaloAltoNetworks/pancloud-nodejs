@@ -3,6 +3,7 @@
  * High level abstraction of the Application Framework Logging Service
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+const url_1 = require("url");
 const common_1 = require("./common");
 const emitter_1 = require("./emitter");
 const error_1 = require("./error");
@@ -14,7 +15,7 @@ const timers_1 = require("timers");
 const MSLEEP = 200;
 const lsPath = "logging-service/v1/queries";
 const jStatus = {
-    'RUNNING': '', 'FINISHED': '', 'JOB_FINISHED': '', 'JOB_FAILED': ''
+    'RUNNING': '', 'FINISHED': '', 'JOB_FINISHED': '', 'JOB_FAILED': '', 'CANCELLED': ''
 };
 function isJobStatus(s) {
     return jStatus.hasOwnProperty(s);
@@ -49,10 +50,9 @@ function isJobResult(obj) {
  * and async features. Objects of this class must be obtained using the factory static method
  */
 class LoggingService extends emitter_1.emitter {
-    constructor(ops) {
-        super(ops);
+    constructor(baseUrl, ops) {
+        super(baseUrl, ops);
         this.className = "LoggingService";
-        this.url = `${this.entryPoint}/${lsPath}`;
         this.eevent = { source: 'LoggingService' };
         this.ap_sleep = MSLEEP;
         this.jobQueue = {};
@@ -65,8 +65,8 @@ class LoggingService extends emitter_1.emitter {
      * @param ops configuration object for the instance to be created
      * @returns a new Logging Service instance object with the provided configuration
      */
-    static factory(ops) {
-        return new LoggingService(ops);
+    static factory(entryPoint, ops) {
+        return new LoggingService(new url_1.URL(lsPath, entryPoint).toString(), ops);
     }
     /**
      * Performs a Logging Service query call and returns a promise with the response.
@@ -84,16 +84,15 @@ class LoggingService extends emitter_1.emitter {
      * class configuration properties
      * @returns a promise with the Application Framework response
      */
-    async query(cfg, CallBack, sleep, fetchTimeout) {
+    async query(cfg, CallBack, sleep) {
         this.stats.queries++;
         if (sleep) {
             this.ap_sleep = sleep;
         }
-        this.fetchTimeout = fetchTimeout;
         let providedLogType = cfg.logType;
         delete cfg.logType;
         let cfgStr = JSON.stringify(cfg);
-        let r_json = await this.fetchPostWrap(this.url, cfgStr, fetchTimeout);
+        let r_json = await this.fetchPostWrap(undefined, cfgStr);
         this.lastResponse = r_json;
         if (!(isJobResult(r_json))) {
             throw new error_1.PanCloudError(this, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(r_json)}`);
@@ -132,7 +131,7 @@ class LoggingService extends emitter_1.emitter {
                 this.eventEmitter(r_json);
                 if (r_json.queryStatus == "JOB_FINISHED") {
                     let jobResolver = this.jobQueue[r_json.queryId].resolve;
-                    await this.emitterCleanup(r_json);
+                    this.emitterCleanup(r_json);
                     jobResolver(r_json);
                 }
                 if (r_json.queryStatus == "FINISHED") {
@@ -168,11 +167,11 @@ class LoggingService extends emitter_1.emitter {
      */
     async poll(qid, sequenceNo, maxWaitTime) {
         this.stats.polls++;
-        let targetUrl = `${this.url}/${qid}/${sequenceNo}`;
+        let targetPath = `/${qid}/${sequenceNo}`;
         if (maxWaitTime && maxWaitTime > 0) {
-            targetUrl += `?maxWaitTime=${maxWaitTime}`;
+            targetPath += `?maxWaitTime=${maxWaitTime}`;
         }
-        let r_json = await this.fetchGetWrap(targetUrl, this.fetchTimeout);
+        let r_json = await this.fetchGetWrap(targetPath);
         this.lastResponse = r_json;
         if (isJobResult(r_json)) {
             if (r_json.result.esResult) {
@@ -194,7 +193,7 @@ class LoggingService extends emitter_1.emitter {
             jobR = await ls.poll(currentQid, currentJob.sequenceNo, currentJob.maxWaitTime);
             if (jobR.queryStatus == "JOB_FAILED") {
                 common_1.commonLogger.alert(ls, `JOB_FAILED returned. Cancelling query ${currentQid}`, 'AUTOPOLL');
-                ls.cancelPoll(currentQid, currentJob.reject);
+                await ls.cancelPoll(currentQid, new error_1.PanCloudError(ls, "UNKNOWN", "JOB_FAILED"));
             }
             else {
                 ls.eventEmitter(jobR);
@@ -202,7 +201,7 @@ class LoggingService extends emitter_1.emitter {
                     currentJob.sequenceNo++;
                 }
                 if (jobR.queryStatus == "JOB_FINISHED") {
-                    await ls.emitterCleanup(jobR);
+                    ls.emitterCleanup(jobR);
                     currentJob.resolve(jobR);
                 }
             }
@@ -210,7 +209,7 @@ class LoggingService extends emitter_1.emitter {
         catch (err) {
             if (error_1.isSdkError(err)) {
                 common_1.commonLogger.alert(ls, `Error triggered. Cancelling query ${currentQid}`, 'AUTOPOLL');
-                ls.cancelPoll(currentQid, currentJob.reject, err);
+                await ls.cancelPoll(currentQid, err);
             }
             else {
                 common_1.commonLogger.error(error_1.PanCloudError.fromError(ls, err));
@@ -228,8 +227,9 @@ class LoggingService extends emitter_1.emitter {
      * User can use this method to cancel (remove) a query from the auto-poll queue
      * @param qid query id to be cancelled
      */
-    cancelPoll(qid, reject, cause) {
+    cancelPoll(qid, err) {
         if (qid in this.jobQueue) {
+            let jobToCancel = this.jobQueue[qid];
             delete this.jobQueue[qid];
             this.pendingQueries = Object.keys(this.jobQueue);
             if (this.pendingQueries.length == 0 && this.tout) {
@@ -237,11 +237,25 @@ class LoggingService extends emitter_1.emitter {
                 this.tout = undefined;
                 this.l2CorrFlush();
             }
-            if (cause) {
-                reject(cause);
+            if (err) {
+                jobToCancel.reject(err);
             }
-            reject(new error_1.PanCloudError(this, "UNKNOWN", "Rejecting auto-poll query (JOB_FAILED?)"));
+            else {
+                jobToCancel.resolve({
+                    queryId: qid,
+                    queryStatus: 'CANCELLED',
+                    result: {
+                        esResult: {
+                            hits: {
+                                hits: []
+                            }
+                        }
+                    },
+                    sequenceNo: 0
+                });
+            }
         }
+        return this.delete_query(qid);
     }
     /**
      * Use this method to cancel a running query
@@ -249,7 +263,7 @@ class LoggingService extends emitter_1.emitter {
      */
     delete_query(queryId) {
         this.stats.deletes++;
-        return this.void_X_Operation(`${this.url}/${queryId}`, undefined, "DELETE");
+        return this.void_X_Operation(`${queryId}`, undefined, "DELETE");
     }
     eventEmitter(j) {
         if (!(j.result.esResult &&
@@ -296,7 +310,6 @@ class LoggingService extends emitter_1.emitter {
             delete this.jobQueue[qid];
         }
         this.pendingQueries = Object.keys(this.jobQueue);
-        return this.delete_query(qid);
     }
     getLsStats() {
         return this.stats;

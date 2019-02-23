@@ -16,10 +16,10 @@ class coreClass {
      *
      * @param ops configuration options for this instance
      */
-    constructor(ops) {
+    constructor(baseUrl, ops) {
         this.className = "coreClass";
         this.cred = ops.credential;
-        this.entryPoint = ops.entryPoint;
+        this.baseUrl = baseUrl;
         if (ops.level != undefined && ops.level != common_1.logLevel.INFO) {
             common_1.commonLogger.level = ops.level;
         }
@@ -31,6 +31,7 @@ class coreClass {
         }
         this.retrierCount = ops.retrierCount;
         this.retrierDelay = ops.retrierDelay;
+        this.fetchTimeout = ops.fetchTimeout;
         this.stats = {
             apiTransactions: 0
         };
@@ -60,15 +61,16 @@ class coreClass {
             }
         }
     }
-    async fetchXWrap(url, method, body, timeout) {
+    async fetchXWrap(method, path, body) {
+        let url = this.baseUrl + ((path) ? path : '');
         this.stats.apiTransactions++;
         await this.checkAutoRefresh();
         let rinit = {
             headers: this.fetchHeaders,
             method: method
         };
-        if (timeout) {
-            rinit.timeout = timeout;
+        if (this.fetchTimeout) {
+            rinit.timeout = this.fetchTimeout;
         }
         if (body) {
             rinit.body = body;
@@ -103,32 +105,32 @@ class coreClass {
      * class configuration properties
      * @returns the object returned by the Application Framework
      */
-    async fetchGetWrap(url, timeout) {
-        return await this.fetchXWrap(url, "GET", undefined, timeout);
+    async fetchGetWrap(path) {
+        return await this.fetchXWrap("GET", path, undefined);
     }
     /**
      * Convenience method that abstracts a POST operation to the Application Framework
      */
-    async fetchPostWrap(url, body, timeout) {
-        return await this.fetchXWrap(url, "POST", body, timeout);
+    async fetchPostWrap(path, body) {
+        return await this.fetchXWrap("POST", path, body);
     }
     /**
      * Convenience method that abstracts a PUT operation to the Application Framework
      */
-    async fetchPutWrap(url, body, timeout) {
-        return await this.fetchXWrap(url, "PUT", body, timeout);
+    async fetchPutWrap(path, body) {
+        return await this.fetchXWrap("PUT", path, body);
     }
     /**
      * Convenience method that abstracts a DELETE operation to the Application Framework
      */
-    async fetchDeleteWrap(url, timeout) {
-        return await this.fetchXWrap(url, "DELETE", undefined, timeout);
+    async fetchDeleteWrap(path) {
+        return await this.fetchXWrap("DELETE", path, undefined);
     }
     /**
      * Convenience method that abstracts a DELETE operation to the Application Framework
      */
-    async void_X_Operation(url, payload, method = "POST") {
-        let r_json = await this.fetchXWrap(url, method, payload);
+    async void_X_Operation(path, payload, method = "POST") {
+        let r_json = await this.fetchXWrap(method, path, payload);
         this.lastResponse = r_json;
     }
 }

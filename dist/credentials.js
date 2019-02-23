@@ -7,10 +7,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const node_fetch_1 = require("node-fetch");
 const error_1 = require("./error");
 const common_1 = require("./common");
-function isAppFramToken(obj) {
+function isIdpResponse(obj) {
     return (typeof obj.access_token == 'string' &&
         typeof obj.expires_in == 'string' &&
         (obj.refresh_tokens === undefined || typeof obj.refresh_tokens == 'string'));
+}
+function isIdpErrorResponse(obj) {
+    return (obj.error !== undefined && typeof obj.error == 'string' &&
+        obj.error_description !== undefined && typeof obj.error_description == 'string');
 }
 /**
  * The Application Framework Identity Provider URL entry point
@@ -166,9 +170,12 @@ class embededCredentials extends Credentials {
         catch (exception) {
             throw new error_1.PanCloudError(embededCredentials, 'PARSER', `Invalid JSON fetch response: ${exception.message}`);
         }
-        if (isAppFramToken(r_json)) {
+        if (isIdpResponse(r_json)) {
             common_1.commonLogger.info(embededCredentials, 'Authorization token successfully retrieved');
             return r_json;
+        }
+        if (isIdpErrorResponse(r_json)) {
+            throw new error_1.PanCloudError(embededCredentials, 'IDENTITY', r_json.error_description);
         }
         throw new error_1.PanCloudError(embededCredentials, 'PARSER', `Unparseable response received from IDP fetch operation: "${JSON.stringify(r_json)}"`);
     }
@@ -205,9 +212,12 @@ class embededCredentials extends Credentials {
         catch (exception) {
             throw new error_1.PanCloudError(embededCredentials, 'PARSER', `Invalid JSON refresh response: ${exception.message}`);
         }
-        if (isAppFramToken(r_json)) {
+        if (isIdpResponse(r_json)) {
             common_1.commonLogger.info(embededCredentials, 'Authorization token successfully retrieved', 'IDENTITY');
             return r_json;
+        }
+        if (isIdpErrorResponse(r_json)) {
+            throw new error_1.PanCloudError(embededCredentials, 'IDENTITY', r_json.error_description);
         }
         throw new error_1.PanCloudError(embededCredentials, 'PARSER', `Unparseable response received from IDP refresh operation: "${JSON.stringify(r_json)}"`);
     }

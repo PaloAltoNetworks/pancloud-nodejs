@@ -2,9 +2,10 @@
  * High level abstraction of the Application Framework Logging Service
  */
 
-import { PATH, isKnownLogType, LOGTYPE, commonLogger } from './common'
+import { URL } from 'url'
+import { PATH, isKnownLogType, LOGTYPE, commonLogger, ENTRYPOINT } from './common'
 import { emitter, emitterOptions, emitterInterface, emitterStats, l2correlation } from './emitter'
-import { PanCloudError, isSdkError } from './error'
+import { PanCloudError, isSdkError, sdkErr } from './error'
 import { setTimeout } from 'timers';
 
 /**
@@ -14,7 +15,7 @@ import { setTimeout } from 'timers';
 const MSLEEP = 200;
 const lsPath: PATH = "logging-service/v1/queries"
 const jStatus = {
-    'RUNNING': '', 'FINISHED': '', 'JOB_FINISHED': '', 'JOB_FAILED': ''
+    'RUNNING': '', 'FINISHED': '', 'JOB_FINISHED': '', 'JOB_FAILED': '', 'CANCELLED': ''
 }
 
 /**
@@ -138,20 +139,17 @@ interface jobEntry {
  * and async features. Objects of this class must be obtained using the factory static method
  */
 export class LoggingService extends emitter {
-    private url: string
     private eevent: emitterInterface<any[]>
     private ap_sleep: number
     private tout: NodeJS.Timeout | undefined
     private jobQueue: { [i: string]: jobEntry }
     private lastProcElement: number
     private pendingQueries: string[]
-    private fetchTimeout: number | undefined
     protected stats: lsStats
 
-    private constructor(ops: emitterOptions) {
-        super(ops)
+    private constructor(baseUrl: string, ops: emitterOptions) {
+        super(baseUrl, ops)
         this.className = "LoggingService"
-        this.url = `${this.entryPoint}/${lsPath}`
         this.eevent = { source: 'LoggingService' }
         this.ap_sleep = MSLEEP
         this.jobQueue = {}
@@ -171,8 +169,8 @@ export class LoggingService extends emitter {
      * @param ops configuration object for the instance to be created
      * @returns a new Logging Service instance object with the provided configuration
      */
-    static factory(ops: emitterOptions): LoggingService {
-        return new LoggingService(ops)
+    static factory(entryPoint: ENTRYPOINT, ops: emitterOptions): LoggingService {
+        return new LoggingService(new URL(lsPath, entryPoint).toString(), ops)
     }
 
     /**
@@ -198,15 +196,13 @@ export class LoggingService extends emitter {
             pcap?: ((p: emitterInterface<Buffer>) => void),
             corr?: ((e: emitterInterface<l2correlation[]>) => void)
         },
-        sleep?: number,
-        fetchTimeout?: number): Promise<jobResult> {
+        sleep?: number): Promise<jobResult> {
         this.stats.queries++
         if (sleep) { this.ap_sleep = sleep }
-        this.fetchTimeout = fetchTimeout
         let providedLogType = cfg.logType
         delete cfg.logType
         let cfgStr = JSON.stringify(cfg)
-        let r_json = await this.fetchPostWrap(this.url, cfgStr, fetchTimeout)
+        let r_json = await this.fetchPostWrap(undefined, cfgStr)
         this.lastResponse = r_json
         if (!(isJobResult(r_json))) {
             throw new PanCloudError(this, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(r_json)}`)
@@ -245,7 +241,7 @@ export class LoggingService extends emitter {
                 this.eventEmitter(r_json)
                 if (r_json.queryStatus == "JOB_FINISHED") {
                     let jobResolver = this.jobQueue[r_json.queryId].resolve
-                    await this.emitterCleanup(r_json)
+                    this.emitterCleanup(r_json)
                     jobResolver(r_json)
                 }
                 if (r_json.queryStatus == "FINISHED") {
@@ -282,11 +278,11 @@ export class LoggingService extends emitter {
      */
     async poll(qid: string, sequenceNo: number, maxWaitTime?: number): Promise<jobResult> {
         this.stats.polls++
-        let targetUrl = `${this.url}/${qid}/${sequenceNo}`
+        let targetPath = `/${qid}/${sequenceNo}`
         if (maxWaitTime && maxWaitTime > 0) {
-            targetUrl += `?maxWaitTime=${maxWaitTime}`
+            targetPath += `?maxWaitTime=${maxWaitTime}`
         }
-        let r_json = await this.fetchGetWrap(targetUrl, this.fetchTimeout);
+        let r_json = await this.fetchGetWrap(targetPath);
         this.lastResponse = r_json
         if (isJobResult(r_json)) {
             if (r_json.result.esResult) {
@@ -309,21 +305,21 @@ export class LoggingService extends emitter {
             jobR = await ls.poll(currentQid, currentJob.sequenceNo, currentJob.maxWaitTime)
             if (jobR.queryStatus == "JOB_FAILED") {
                 commonLogger.alert(ls, `JOB_FAILED returned. Cancelling query ${currentQid}`, 'AUTOPOLL')
-                ls.cancelPoll(currentQid, currentJob.reject)
+                await ls.cancelPoll(currentQid, new PanCloudError(ls, "UNKNOWN", "JOB_FAILED"))
             } else {
                 ls.eventEmitter(jobR)
                 if (jobR.queryStatus == "FINISHED") {
                     currentJob.sequenceNo++
                 }
                 if (jobR.queryStatus == "JOB_FINISHED") {
-                    await ls.emitterCleanup(jobR)
+                    ls.emitterCleanup(jobR)
                     currentJob.resolve(jobR)
                 }
             }
         } catch (err) {
             if (isSdkError(err)) {
                 commonLogger.alert(ls, `Error triggered. Cancelling query ${currentQid}`, 'AUTOPOLL')
-                ls.cancelPoll(currentQid, currentJob.reject, err)
+                await ls.cancelPoll(currentQid, err)
             } else {
                 commonLogger.error(PanCloudError.fromError(ls, err))
             }
@@ -340,8 +336,9 @@ export class LoggingService extends emitter {
      * User can use this method to cancel (remove) a query from the auto-poll queue
      * @param qid query id to be cancelled 
      */
-    public cancelPoll(qid: string, reject: (r: any) => void, cause?: Error): void {
+    public cancelPoll(qid: string, err?: sdkErr): Promise<void> {
         if (qid in this.jobQueue) {
+            let jobToCancel = this.jobQueue[qid]
             delete this.jobQueue[qid]
             this.pendingQueries = Object.keys(this.jobQueue)
             if (this.pendingQueries.length == 0 && this.tout) {
@@ -349,11 +346,24 @@ export class LoggingService extends emitter {
                 this.tout = undefined
                 this.l2CorrFlush()
             }
-            if (cause) {
-                reject(cause)
+            if (err) {
+                jobToCancel.reject(err)
+            } else {
+                jobToCancel.resolve({
+                    queryId: qid,
+                    queryStatus: 'CANCELLED',
+                    result: {
+                        esResult: {
+                            hits: {
+                                hits: []
+                            }
+                        }
+                    },
+                    sequenceNo: 0
+                })
             }
-            reject(new PanCloudError(this, "UNKNOWN", "Rejecting auto-poll query (JOB_FAILED?)"))
         }
+        return this.delete_query(qid)
     }
 
     /**
@@ -362,7 +372,7 @@ export class LoggingService extends emitter {
      */
     public delete_query(queryId: string): Promise<void> {
         this.stats.deletes++
-        return this.void_X_Operation(`${this.url}/${queryId}`, undefined, "DELETE")
+        return this.void_X_Operation(`${queryId}`, undefined, "DELETE")
     }
 
     private eventEmitter(j: jobResult): void {
@@ -403,7 +413,7 @@ export class LoggingService extends emitter {
         this.emitMessage(this.eevent)
     }
 
-    private emitterCleanup(j: jobResult): Promise<void> {
+    private emitterCleanup(j: jobResult): void {
         let qid = j.queryId
         if (this.pendingQueries.length == 1) {
             this.l2CorrFlush()
@@ -412,7 +422,6 @@ export class LoggingService extends emitter {
             delete this.jobQueue[qid]
         }
         this.pendingQueries = Object.keys(this.jobQueue)
-        return this.delete_query(qid)
     }
 
     public getLsStats(): lsStats {

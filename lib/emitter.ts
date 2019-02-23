@@ -58,8 +58,8 @@ export class emitter extends coreClass {
     public className: string
     protected stats: emitterStats
 
-    protected constructor(ops: emitterOptions) {
-        super(ops)
+    protected constructor(baseUrl: string, ops: emitterOptions) {
+        super(baseUrl, ops)
         this.className = "emitterClass"
         this.allowDupReceiver = (ops.allowDup == undefined) ? false : ops.allowDup
         this.newEmitter()

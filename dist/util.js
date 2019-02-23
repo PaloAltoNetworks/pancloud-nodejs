@@ -4,6 +4,8 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 const buffer_1 = require("buffer");
+const common_1 = require("./common");
+const error_1 = require("./error");
 function isDecoDnsItem(item) {
     return item.seqno && item.value && typeof (item.seqno) == "number" && typeof (item.value) == "string";
 }
@@ -16,9 +18,14 @@ class util {
             return "";
         }
         let domain = [];
+        let dnsNameLen = 0;
         let pointer = 0;
         let code = label[0];
+        let maxIterations = 250;
         while (code) {
+            if (maxIterations-- == 0) {
+                throw new Error("Too many iterations (loop?)");
+            }
             if (code > 63) {
                 code = (code & 0x3f) << 8 | label[pointer + 1];
                 pointer = 0;
@@ -33,12 +40,17 @@ class util {
                     }
                     return false;
                 }))) {
-                    throw new Error();
+                    throw new Error("Pointer not found");
                 }
             }
             else {
                 pointer++;
-                domain.push(String.fromCharCode(...label.slice(pointer, pointer + code)));
+                let token = String.fromCharCode(...label.slice(pointer, pointer + code));
+                dnsNameLen += token.length;
+                if (dnsNameLen > 250) {
+                    throw new Error("Name too large (loop?)");
+                }
+                domain.push(token);
                 pointer += code;
             }
             code = label[pointer];
@@ -56,9 +68,10 @@ class util {
                     item[key] = util.typeAlias[item[key]];
                     return;
                 }
-                if (isDecoDnsItem(item[key])) {
-                    let label = Uint8Array.from(buffer_1.Buffer.from(item[key].value, 'base64'));
-                    offsets[item[key].seqno] = label;
+                let dDnsItem = item[key];
+                if (isDecoDnsItem(dDnsItem)) {
+                    let label = Uint8Array.from(buffer_1.Buffer.from(dDnsItem.value, 'base64'));
+                    offsets[dDnsItem.seqno] = label;
                     if (key == name_property) {
                         try {
                             item[key].value = util.dnsResolve(label, offsets);
@@ -69,27 +82,27 @@ class util {
                         return;
                     }
                     if (itemType == 16) { // TXT decoding
-                        item[key].value = label.toString();
+                        dDnsItem.value = label.toString();
                         return;
                     }
                     if (itemType == 1) { // IPv4 decoding
-                        item[key].value = label.join('.');
+                        dDnsItem.value = label.join('.');
                         return;
                     }
                     if (itemType == 28) { // IPv6 decoding
                         let ipv6Parts = [];
                         new Uint16Array(label.buffer).forEach(x => ipv6Parts.push(('000' + x.toString(16)).slice(-4)));
-                        item[key].value = ipv6Parts.join(':');
+                        dDnsItem.value = ipv6Parts.join(':');
                         return;
                     }
                     if ([60, 48, 45, 46, 25, 61, 43, 41].includes(itemType)) {
                         let hexParts = [];
                         label.forEach(x => hexParts.push(('0' + x.toString(16)).slice(-2)));
-                        item[key].value = hexParts.join(':');
+                        dDnsItem.value = hexParts.join(':');
                         return;
                     }
                     try {
-                        item[key].value = util.dnsResolve(label, offsets);
+                        dDnsItem.value = util.dnsResolve(label, offsets);
                     }
                     catch (_b) {
                         throw new Error(`Unable to decode ${JSON.stringify(item)}`);
@@ -105,18 +118,26 @@ class util {
      */
     static dnsDecode(event) {
         if (!(event.type && event.subtype && event.type == 'DPI' && event.subtype == 'dns')) {
-            return;
+            return false;
         }
-        if (event['dns-req-query-items']) {
-            util.dnsProcessElement(event['dns-req-query-items'], {}, 'dns-req-query-name', 'dns-req-query-type');
+        let decoded = true;
+        try {
+            if (event['dns-req-query-items']) {
+                util.dnsProcessElement(event['dns-req-query-items'], {}, 'dns-req-query-name', 'dns-req-query-type');
+            }
+            let offsets = {};
+            if (event['dns-rsp-query-items']) {
+                util.dnsProcessElement(event['dns-rsp-query-items'], offsets, 'dns-rsp-query-name', 'dns-rsp-query-type');
+            }
+            if (event['dns-rsp-resource-record-items']) {
+                util.dnsProcessElement(event['dns-rsp-resource-record-items'], offsets, 'dns-rsp-rr-name', 'dns-rsp-rr-type');
+            }
         }
-        let offsets = {};
-        if (event['dns-rsp-query-items']) {
-            util.dnsProcessElement(event['dns-rsp-query-items'], offsets, 'dns-rsp-query-name', 'dns-rsp-query-type');
+        catch (e) {
+            common_1.commonLogger.error(error_1.PanCloudError.fromError({ className: "utilityclass" }, e));
+            decoded = false;
         }
-        if (event['dns-rsp-resource-record-items']) {
-            util.dnsProcessElement(event['dns-rsp-resource-record-items'], offsets, 'dns-rsp-rr-name', 'dns-rsp-rr-type');
-        }
+        return decoded;
     }
     /**
     * Converts a the pcap base64 string found on some Application Framework events into

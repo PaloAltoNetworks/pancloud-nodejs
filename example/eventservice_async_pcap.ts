@@ -13,8 +13,7 @@ let builderCfg: esFilterBuilderCfg = {
         },
         poolOptions: {
             ack: true,
-            pollTimeout: 1000,
-            fetchTimeout: 45000
+            pollTimeout: 1000
         }
     },
     flush: true
@@ -30,10 +29,10 @@ export async function main(): Promise<void> {
         refresh_token: r_token,
         access_token: a_token
     })
-    let es = await EventService.factory({
+    let es = await EventService.factory(entryPoint, {
         credential: c,
-        // level: logLevel.DEBUG,
-        entryPoint: entryPoint
+        fetchTimeout: 45000
+        // level: logLevel.DEBUG
     })
     await es.filterBuilder(builderCfg)
     console.log("Set the filter and registered the async pcap receiver")
@@ -46,6 +45,7 @@ export async function main(): Promise<void> {
     })
     await es.clearFilter(true)
     console.log("Cleared the filter and flushed the channel")
+    console.log("Event Service stats")
     console.log(JSON.stringify(es.getEsStats(), undefined, " "))
 }
 

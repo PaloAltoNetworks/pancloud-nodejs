@@ -10,8 +10,8 @@ const EVENT_EVENT = 'EVENT_EVENT';
 const PCAP_EVENT = 'PCAP_EVENT';
 const CORR_EVENT = 'CORR_EVENT';
 class emitter extends core_1.coreClass {
-    constructor(ops) {
-        super(ops);
+    constructor(baseUrl, ops) {
+        super(baseUrl, ops);
         this.className = "emitterClass";
         this.allowDupReceiver = (ops.allowDup == undefined) ? false : ops.allowDup;
         this.newEmitter();
