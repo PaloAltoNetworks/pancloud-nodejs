@@ -29,7 +29,7 @@ interface esPollOptions {
     ack: boolean;
 }
 interface esFilterOptions {
-    CallBack?: {
+    callBack?: {
         event?: ((e: emitterInterface<any[]>) => void);
         pcap?: ((p: emitterInterface<Buffer>) => void);
         corr?: ((e: emitterInterface<l2correlation[]>) => void);
@@ -74,7 +74,7 @@ export interface esStats extends emitterStats {
  * High-level class that implements an Application Framework Event Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-export declare class EventService extends emitter {
+export declare class EventService extends emitter implements Iterable<Promise<esEvent[]>> {
     private filterPath;
     private pollPath;
     private ackPath;
@@ -131,6 +131,7 @@ export declare class EventService extends emitter {
      * Performs a `FLUSH` operation on the Event Service
      */
     flush(): Promise<void>;
+    [Symbol.iterator](): IterableIterator<Promise<esEvent[]>>;
     /**
      * Performs a `POLL` operation on the Event Service
      * @returns a promise that resolves to an array of {@link esEvent} objects

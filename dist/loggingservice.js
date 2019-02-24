@@ -54,7 +54,7 @@ class LoggingService extends emitter_1.emitter {
         super(baseUrl, ops);
         this.className = "LoggingService";
         this.eevent = { source: 'LoggingService' };
-        this.ap_sleep = MSLEEP;
+        this.ap_sleep = (ops.apSleep) ? ops.apSleep : MSLEEP;
         this.jobQueue = {};
         this.lastProcElement = 0;
         this.pendingQueries = [];
@@ -84,11 +84,8 @@ class LoggingService extends emitter_1.emitter {
      * class configuration properties
      * @returns a promise with the Application Framework response
      */
-    async query(cfg, CallBack, sleep) {
+    async query(cfg, CallBack) {
         this.stats.queries++;
-        if (sleep) {
-            this.ap_sleep = sleep;
-        }
         let providedLogType = cfg.logType;
         delete cfg.logType;
         let cfgStr = JSON.stringify(cfg);
@@ -263,7 +260,7 @@ class LoggingService extends emitter_1.emitter {
      */
     delete_query(queryId) {
         this.stats.deletes++;
-        return this.void_X_Operation(`${queryId}`, undefined, "DELETE");
+        return this.void_X_Operation(`/${queryId}`, undefined, "DELETE");
     }
     eventEmitter(j) {
         if (!(j.result.esResult &&

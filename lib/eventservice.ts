@@ -82,7 +82,7 @@ interface esPollOptions {
 }
 
 interface esFilterOptions {
-    CallBack?: {
+    callBack?: {
         event?: ((e: emitterInterface<any[]>) => void),
         pcap?: ((p: emitterInterface<Buffer>) => void),
         corr?: ((e: emitterInterface<l2correlation[]>) => void)
@@ -132,7 +132,7 @@ export interface esStats extends emitterStats {
  * High-level class that implements an Application Framework Event Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-export class EventService extends emitter {
+export class EventService extends emitter implements Iterable<Promise<esEvent[]>> {
     private filterPath: string
     private pollPath: string
     private ackPath: string
@@ -209,8 +209,8 @@ export class EventService extends emitter {
         this.popts = (fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO
         this.ap_sleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP
         await this.void_X_Operation(this.filterPath, JSON.stringify(fcfg.filter), 'PUT')
-        if (fcfg.filterOptions.CallBack) {
-            this.newEmitter(fcfg.filterOptions.CallBack.event, fcfg.filterOptions.CallBack.pcap, fcfg.filterOptions.CallBack.corr)
+        if (fcfg.filterOptions.callBack) {
+            this.newEmitter(fcfg.filterOptions.callBack.event, fcfg.filterOptions.callBack.pcap, fcfg.filterOptions.callBack.corr)
             EventService.autoPoll(this)
         } else if (this.tout) {
             clearTimeout(this.tout)
@@ -292,6 +292,12 @@ export class EventService extends emitter {
     public async flush(): Promise<void> {
         this.stats.flushes++
         return this.void_X_Operation(this.flushPath)
+    }
+
+    public *[Symbol.iterator](): IterableIterator<Promise<esEvent[]>> {
+        while (true) {
+            yield this.poll()
+        }
     }
 
     /**

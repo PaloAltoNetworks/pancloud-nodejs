@@ -134,6 +134,10 @@ interface jobEntry {
     maxWaitTime?: number
 }
 
+interface lsops extends emitterOptions {
+    apSleep?: number
+}
+
 /**
  * High-level class that implements an Application Framework Logging Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
@@ -147,11 +151,11 @@ export class LoggingService extends emitter {
     private pendingQueries: string[]
     protected stats: lsStats
 
-    private constructor(baseUrl: string, ops: emitterOptions) {
+    private constructor(baseUrl: string, ops: lsops) {
         super(baseUrl, ops)
         this.className = "LoggingService"
         this.eevent = { source: 'LoggingService' }
-        this.ap_sleep = MSLEEP
+        this.ap_sleep = (ops.apSleep) ? ops.apSleep : MSLEEP
         this.jobQueue = {}
         this.lastProcElement = 0
         this.pendingQueries = []
@@ -169,7 +173,7 @@ export class LoggingService extends emitter {
      * @param ops configuration object for the instance to be created
      * @returns a new Logging Service instance object with the provided configuration
      */
-    static factory(entryPoint: ENTRYPOINT, ops: emitterOptions): LoggingService {
+    static factory(entryPoint: ENTRYPOINT, ops: lsops): LoggingService {
         return new LoggingService(new URL(lsPath, entryPoint).toString(), ops)
     }
 
@@ -195,10 +199,8 @@ export class LoggingService extends emitter {
             event?: ((e: emitterInterface<any[]>) => void),
             pcap?: ((p: emitterInterface<Buffer>) => void),
             corr?: ((e: emitterInterface<l2correlation[]>) => void)
-        },
-        sleep?: number): Promise<jobResult> {
+        }): Promise<jobResult> {
         this.stats.queries++
-        if (sleep) { this.ap_sleep = sleep }
         let providedLogType = cfg.logType
         delete cfg.logType
         let cfgStr = JSON.stringify(cfg)
@@ -372,7 +374,7 @@ export class LoggingService extends emitter {
      */
     public delete_query(queryId: string): Promise<void> {
         this.stats.deletes++
-        return this.void_X_Operation(`${queryId}`, undefined, "DELETE")
+        return this.void_X_Operation(`/${queryId}`, undefined, "DELETE")
     }
 
     private eventEmitter(j: jobResult): void {

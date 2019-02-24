@@ -5,6 +5,7 @@ import * as eventservice_flush from './eventservice_flush'
 import * as eventservice_setfilter from './eventservice_setfilter'
 import * as eventservice_getfilter from './eventservice_getfilter'
 import * as eventservice_poll from './eventservice_poll'
+import * as eventservice_generator from './eventservice_generator'
 import * as eventservice_async_poll from './eventservice_async_poll'
 import * as eventservice_clearfilter from './eventservice_clearfilter'
 import * as eventservice_pcap from './eventservice_async_pcap'
@@ -17,6 +18,7 @@ const examples: { [i: string]: () => Promise<void> } = {
     "SET_FILTER": eventservice_setfilter.main,
     "GET_FILTER": eventservice_getfilter.main,
     "POLL": eventservice_poll.main,
+    "GENERATOR_POLL": eventservice_generator.main,
     "ASYNC_POLL": eventservice_async_poll.main,
     "ASYNC_PCAP": eventservice_pcap.main,
     "L2CORRELATION": eventservice_corr.main,

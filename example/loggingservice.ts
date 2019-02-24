@@ -5,13 +5,14 @@ import * as loggingservice_async_poll from './loggingservice_async_poll'
 import * as loggingservice_complex_async_poll from './loggingservice_complex_async_poll'
 import * as loggingservice_async_pcap from './loggingservice_async_pcap'
 import * as loggingservice_async_dns_poll from './loggingservice_async_dns_poll'
-import * as oa2 from './oa2s_credential'
+import * as loggingservice_cancel_async_poll from './loggingservice_cancel_async_poll'
 
 
 const examples: { [i: string]: () => Promise<void> } = {
     "BASIC": loggingservice_basic.main,
     "POLL": loggingservice_poll.main,
     "ASYNC_POLL": loggingservice_async_poll.main,
+    "ASYNC_CANCEL": loggingservice_cancel_async_poll.main,
     "ASYNC_DNS_POLL": loggingservice_async_dns_poll.main,
     "ASYNC_PCAP": loggingservice_async_pcap.main,
     "COMPLEX_ASYNC_POLL": loggingservice_complex_async_poll.main

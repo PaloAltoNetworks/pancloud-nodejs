@@ -25,7 +25,7 @@ let builderCfg: esFilterBuilderCfg = {
         { table: "panw.dpi", timeout: 1000 },
         { table: "panw.threat", where: 'where risk-of-app > 3' }],
     filterOptions: {
-        CallBack: {
+        callBack: {
             event: receiver
         },
         poolOptions: {
