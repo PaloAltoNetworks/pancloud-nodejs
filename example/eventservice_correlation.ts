@@ -8,7 +8,7 @@ let builderCfg: esFilterBuilderCfg = {
         { table: "panw.traffic", timeout: 1000 },
         { table: "panw.dpi", timeout: 1000 }],
     filterOptions: {
-        CallBack: {
+        callBack: {
             corr: corrReceicer
         },
         poolOptions: {

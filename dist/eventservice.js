@@ -106,8 +106,8 @@ class EventService extends emitter_1.emitter {
         this.popts = (fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO;
         this.ap_sleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP;
         await this.void_X_Operation(this.filterPath, JSON.stringify(fcfg.filter), 'PUT');
-        if (fcfg.filterOptions.CallBack) {
-            this.newEmitter(fcfg.filterOptions.CallBack.event, fcfg.filterOptions.CallBack.pcap, fcfg.filterOptions.CallBack.corr);
+        if (fcfg.filterOptions.callBack) {
+            this.newEmitter(fcfg.filterOptions.callBack.event, fcfg.filterOptions.callBack.pcap, fcfg.filterOptions.callBack.corr);
             EventService.autoPoll(this);
         }
         else if (this.tout) {
@@ -179,6 +179,11 @@ class EventService extends emitter_1.emitter {
     async flush() {
         this.stats.flushes++;
         return this.void_X_Operation(this.flushPath);
+    }
+    *[Symbol.iterator]() {
+        while (true) {
+            yield this.poll();
+        }
     }
     /**
      * Performs a `POLL` operation on the Event Service

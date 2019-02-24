@@ -88,6 +88,9 @@ export interface jobResult {
         };
     };
 }
+interface lsops extends emitterOptions {
+    apSleep?: number;
+}
 /**
  * High-level class that implements an Application Framework Logging Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
@@ -106,7 +109,7 @@ export declare class LoggingService extends emitter {
      * @param ops configuration object for the instance to be created
      * @returns a new Logging Service instance object with the provided configuration
      */
-    static factory(entryPoint: ENTRYPOINT, ops: emitterOptions): LoggingService;
+    static factory(entryPoint: ENTRYPOINT, ops: lsops): LoggingService;
     /**
      * Performs a Logging Service query call and returns a promise with the response.
      * If the "eCallBack" handler is provided then it will be registered into the event topic and
@@ -127,7 +130,7 @@ export declare class LoggingService extends emitter {
         event?: ((e: emitterInterface<any[]>) => void);
         pcap?: ((p: emitterInterface<Buffer>) => void);
         corr?: ((e: emitterInterface<l2correlation[]>) => void);
-    }, sleep?: number): Promise<jobResult>;
+    }): Promise<jobResult>;
     /**
      * Used for synchronous operations (when the auto-poll feature of a query is not used)
      * @param qid the query id to poll results from

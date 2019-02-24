@@ -8,7 +8,7 @@ let builderCfg: esFilterBuilderCfg = {
     filter: [
         { table: "panw.threat", timeout: 1000 }],
     filterOptions: {
-        CallBack: {
+        callBack: {
             pcap: receiver
         },
         poolOptions: {
