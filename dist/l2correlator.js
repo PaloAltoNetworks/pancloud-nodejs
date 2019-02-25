@@ -9,7 +9,7 @@ function isL3Event(x) {
 function isL2Event(x) {
     return isEvent(x) && ('extended-traffic-log-mac' in x) && ('extended-traffic-log-mac-stc' in x);
 }
-class macCorrelator {
+class MacCorrelator {
     constructor(ageout = 120, absoluteTime = false, gbMultiplier = 0) {
         this.ageout = ageout;
         this.absoluteTime = absoluteTime;
@@ -175,4 +175,4 @@ class macCorrelator {
         return { plain: Object.values(mapped) };
     }
 }
-exports.macCorrelator = macCorrelator;
+exports.MacCorrelator = MacCorrelator;

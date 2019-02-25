@@ -4,7 +4,7 @@
 
 import { URL } from 'url'
 import { PATH, LOGTYPE, isKnownLogType, commonLogger, ENTRYPOINT } from './common'
-import { emitter, emitterOptions, emitterInterface, emitterStats, l2correlation } from './emitter'
+import { Emitter, EmitterOptions, EmitterInterface, EmitterStats, L2correlation } from './emitter'
 import { PanCloudError } from './error'
 import { setTimeout, clearTimeout } from 'timers'
 
@@ -17,18 +17,18 @@ const esPath: PATH = "event-service/v1/channels"
 /**
  * Default Event Server {@link esPollOptions} options
  */
-let DEFAULT_PO: esPollOptions = { ack: false, pollTimeout: 1000 }
+let DEFAULT_PO: EsPollOptions = { ack: false, pollTimeout: 1000 }
 let invalidTables: LOGTYPE[] = ["tms.analytics", "tms.config", "tms.system", "tms.threat"]
 
 /**
  * Event Service emitted message interface
  */
-interface esEvent {
+interface EsEvent {
     logType: LOGTYPE,
     event: any[]
 }
 
-function is_esEvent(obj: any): obj is esEvent {
+function isEsEvent(obj: any): obj is EsEvent {
     if (obj && typeof obj == "object") {
         if ("logType" in obj && typeof obj.logType == "string" && isKnownLogType(obj.logType)) {
             if ("event" in obj && typeof obj.event == "object" && obj.event instanceof Array) {
@@ -42,7 +42,7 @@ function is_esEvent(obj: any): obj is esEvent {
 /**
  * Interface that describes an Event Service filter
  */
-export interface esFilter {
+export interface EsFilter {
     filters: {
         [index: string]: {
             filter: string,
@@ -53,7 +53,7 @@ export interface esFilter {
     flush?: boolean
 }
 
-function is_esFilter(obj: any): obj is esFilter {
+function isEsFilter(obj: any): obj is EsFilter {
     if (obj && typeof obj == "object") {
         if ("filters" in obj && typeof obj.filters == "object" && obj.filters instanceof Array) {
             let obj2 = obj.filters as {}[]
@@ -76,48 +76,48 @@ function is_esFilter(obj: any): obj is esFilter {
     return false
 }
 
-interface esPollOptions {
+interface EsPollOptions {
     pollTimeout: number,
     ack: boolean
 }
 
-interface esFilterOptions {
+interface EsFilterOptions {
     callBack?: {
-        event?: ((e: emitterInterface<any[]>) => void),
-        pcap?: ((p: emitterInterface<Buffer>) => void),
-        corr?: ((e: emitterInterface<l2correlation[]>) => void)
+        event?: ((e: EmitterInterface<any[]>) => void),
+        pcap?: ((p: EmitterInterface<Buffer>) => void),
+        corr?: ((e: EmitterInterface<L2correlation[]>) => void)
     },
     sleep?: number,
-    poolOptions?: esPollOptions
+    poolOptions?: EsPollOptions
 }
 
 /**
  * Interface that describes a valid Event Service filter configuration
  */
-export interface esFilterCfg {
-    filter: esFilter,
-    filterOptions: esFilterOptions
+export interface EsFilterCfg {
+    filter: EsFilter,
+    filterOptions: EsFilterOptions
 }
 
 /**
  * High level interface to build a valid {@link esFilterCfg} object using the {@link EventService.filterBuilder} method
  */
-export interface esFilterBuilderCfg {
+export interface EsFilterBuilderCfg {
     filter: {
         table: LOGTYPE,
         where?: string,
         timeout?: number,
         batchSize?: number
     }[],
-    filterOptions: esFilterOptions,
+    filterOptions: EsFilterOptions,
     flush?: boolean
 }
 
-export interface esOptions extends emitterOptions {
+export interface EsOptions extends EmitterOptions {
     channelId?: string
 }
 
-export interface esStats extends emitterStats {
+export interface EsStats extends EmitterStats {
     records: number,
     polls: number,
     deletes: number,
@@ -132,26 +132,26 @@ export interface esStats extends emitterStats {
  * High-level class that implements an Application Framework Event Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-export class EventService extends emitter implements Iterable<Promise<esEvent[]>> {
+export class EventService extends Emitter implements Iterable<Promise<EsEvent[]>> {
     private filterPath: string
     private pollPath: string
     private ackPath: string
     private nackPath: string
     private flushPath: string
-    private popts: esPollOptions
-    private ap_sleep: number
+    private popts: EsPollOptions
+    private apSleep: number
     private tout: NodeJS.Timeout | undefined
     private polling: boolean
-    private eevent: emitterInterface<any[]>
-    protected stats: esStats
+    private eevent: EmitterInterface<any[]>
+    protected stats: EsStats
 
-    private constructor(baseUrl: string, ops: esOptions) {
+    private constructor(baseUrl: string, ops: EsOptions) {
         super(baseUrl, ops)
         this.className = "EventService"
         if (!ops.channelId) { ops.channelId = 'EventFilter' }
         this.setChannel(ops.channelId)
         this.popts = DEFAULT_PO
-        this.ap_sleep = MSLEEP
+        this.apSleep = MSLEEP
         this.polling = false
         this.eevent = { source: "EventService" }
         this.stats = {
@@ -181,21 +181,21 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
      * {@link esOptions}
      * @returns an instantiated {@link EventService} object
      */
-    static factory(entryPoint: ENTRYPOINT, esOps: esOptions): EventService {
+    static factory(entryPoint: ENTRYPOINT, esOps: EsOptions): EventService {
         return new EventService(new URL(esPath, entryPoint).toString(), esOps)
     }
 
     /**
      * @returns the current Event Service filter configuration
      */
-    async getFilters(): Promise<esFilter> {
+    async getFilters(): Promise<EsFilter> {
         this.stats.filtergets++
-        let r_json = await this.fetchGetWrap(this.filterPath);
-        this.lastResponse = r_json
-        if (is_esFilter(r_json)) {
-            return r_json
+        let rJson = await this.fetchGetWrap(this.filterPath);
+        this.lastResponse = rJson
+        if (isEsFilter(rJson)) {
+            return rJson
         }
-        throw new PanCloudError(this, 'PARSER', `response is not a valid ES Filter: ${JSON.stringify(r_json)}`)
+        throw new PanCloudError(this, 'PARSER', `response is not a valid ES Filter: ${JSON.stringify(rJson)}`)
     }
 
     /**
@@ -204,11 +204,11 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
      * only {@link esFilterCfg.filterOptions.eventCallBack} is supported) then the class AutoPoll feature is turned on
      * @returns a promise to the current Event Service to ease promise chaining
      */
-    async setFilters(fcfg: esFilterCfg): Promise<EventService> {
+    async setFilters(fcfg: EsFilterCfg): Promise<EventService> {
         this.stats.filtersets++
         this.popts = (fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO
-        this.ap_sleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP
-        await this.void_X_Operation(this.filterPath, JSON.stringify(fcfg.filter), 'PUT')
+        this.apSleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP
+        await this.voidXOperation(this.filterPath, JSON.stringify(fcfg.filter), 'PUT')
         if (fcfg.filterOptions.callBack) {
             this.newEmitter(fcfg.filterOptions.callBack.event, fcfg.filterOptions.callBack.pcap, fcfg.filterOptions.callBack.corr)
             EventService.autoPoll(this)
@@ -225,11 +225,11 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
      * @param fbcfg The filter description object
      * @returns a promise to the current Event Service to ease promise chaining
      */
-    public filterBuilder(fbcfg: esFilterBuilderCfg): Promise<EventService> {
+    public filterBuilder(fbcfg: EsFilterBuilderCfg): Promise<EventService> {
         if (fbcfg.filter.some(f => invalidTables.includes(f.table))) {
             throw new PanCloudError(this, 'CONFIG', 'PanCloudError() only "tms.traps" is accepted in the EventService')
         }
-        let fcfg: esFilterCfg = {
+        let fcfg: EsFilterCfg = {
             filter: {
                 filters: fbcfg.filter.map(e => {
                     let m: {
@@ -262,7 +262,7 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
      * @returns a promise to the current Event Service to ease promise chaining
      */
     public clearFilter(flush = false): Promise<EventService> {
-        let fcfg: esFilterCfg = { filter: { filters: [] }, filterOptions: {} }
+        let fcfg: EsFilterCfg = { filter: { filters: [] }, filterOptions: {} }
         if (flush) {
             fcfg.filter.flush = true
         }
@@ -275,7 +275,7 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
      */
     public async ack(): Promise<void> {
         this.stats.acks++
-        return this.void_X_Operation(this.ackPath)
+        return this.voidXOperation(this.ackPath)
     }
 
     /**
@@ -283,7 +283,7 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
      */
     public async nack(): Promise<void> {
         this.stats.nacks++
-        return this.void_X_Operation(this.nackPath)
+        return this.voidXOperation(this.nackPath)
     }
 
     /**
@@ -291,10 +291,10 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
      */
     public async flush(): Promise<void> {
         this.stats.flushes++
-        return this.void_X_Operation(this.flushPath)
+        return this.voidXOperation(this.flushPath)
     }
 
-    public *[Symbol.iterator](): IterableIterator<Promise<esEvent[]>> {
+    public *[Symbol.iterator](): IterableIterator<Promise<EsEvent[]>> {
         while (true) {
             yield this.poll()
         }
@@ -304,17 +304,17 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
      * Performs a `POLL` operation on the Event Service
      * @returns a promise that resolves to an array of {@link esEvent} objects
      */
-    public async poll(): Promise<esEvent[]> {
+    public async poll(): Promise<EsEvent[]> {
         this.stats.polls++
         let body: string = '{}'
         if (this.popts.pollTimeout != 1000) {
             body = JSON.stringify({ pollTimeout: this.popts.pollTimeout })
         }
-        let r_json = await this.fetchPostWrap(this.pollPath, body);
-        this.lastResponse = r_json
-        if (r_json && typeof r_json == "object" && r_json instanceof Array) {
-            if (r_json.every(e => {
-                if (is_esEvent(e)) {
+        let rJson = await this.fetchPostWrap(this.pollPath, body);
+        this.lastResponse = rJson
+        if (rJson && typeof rJson == "object" && rJson instanceof Array) {
+            if (rJson.every(e => {
+                if (isEsEvent(e)) {
                     this.stats.records += e.event.length
                     return true
                 }
@@ -323,7 +323,7 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
                 if (this.popts.ack) {
                     await this.ack()
                 }
-                return r_json as esEvent[]
+                return rJson as EsEvent[]
             }
         }
         throw new PanCloudError(this, 'PARSER', 'Response is not a valid ES Event array')
@@ -332,7 +332,7 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
     private static async autoPoll(es: EventService): Promise<void> {
         es.polling = true
         es.tout = undefined
-        let e: esEvent[] = []
+        let e: EsEvent[] = []
         try {
             e = await es.poll()
             e.forEach(i => {
@@ -347,7 +347,7 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
             if (e.length) {
                 setImmediate(EventService.autoPoll, es)
             } else {
-                es.tout = setTimeout(EventService.autoPoll, es.ap_sleep, es)
+                es.tout = setTimeout(EventService.autoPoll, es.apSleep, es)
             }
         }
     }
@@ -372,7 +372,7 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
         EventService.autoPoll(this)
     }
 
-    public getEsStats(): esStats {
+    public getEsStats(): EsStats {
         return this.stats
     }
 }

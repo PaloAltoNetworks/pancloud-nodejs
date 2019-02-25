@@ -3,13 +3,13 @@
  * Provides common resources for other modules in the pancloud SDK
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-var logLevel;
-(function (logLevel) {
-    logLevel[logLevel["DEBUG"] = 0] = "DEBUG";
-    logLevel[logLevel["INFO"] = 1] = "INFO";
-    logLevel[logLevel["ALERT"] = 2] = "ALERT";
-    logLevel[logLevel["ERROR"] = 3] = "ERROR";
-})(logLevel = exports.logLevel || (exports.logLevel = {}));
+var LogLevel;
+(function (LogLevel) {
+    LogLevel[LogLevel["DEBUG"] = 0] = "DEBUG";
+    LogLevel[LogLevel["INFO"] = 1] = "INFO";
+    LogLevel[LogLevel["ALERT"] = 2] = "ALERT";
+    LogLevel[LogLevel["ERROR"] = 3] = "ERROR";
+})(LogLevel = exports.LogLevel || (exports.LogLevel = {}));
 const LTYPES = {
     "panw.auth": "",
     "panw.config": "",
@@ -41,7 +41,7 @@ exports.isKnownLogType = isKnownLogType;
 /**
  * Centralized logging capability for the whole pancloud SDK
  */
-class sdkLogger {
+class SdkLogger {
     /**
      *
      * @param level only messages with a level equal or avobe this provided value will be loogged
@@ -52,16 +52,16 @@ class sdkLogger {
         this.stackTrace = stackTrace;
     }
     error(e) {
-        this.format(e.getSourceClass(), e.getErrorMessage(), logLevel.ERROR, e.name, e.getErrorCode(), undefined, e.stack);
+        this.format(e.getSourceClass(), e.getErrorMessage(), LogLevel.ERROR, e.name, e.getErrorCode(), undefined, e.stack);
     }
     alert(source, message, name) {
-        this.format(source.className, message, logLevel.ALERT, name);
+        this.format(source.className, message, LogLevel.ALERT, name);
     }
     info(source, message, name) {
-        this.format(source.className, message, logLevel.INFO, name);
+        this.format(source.className, message, LogLevel.INFO, name);
     }
     debug(source, message, name, payload) {
-        this.format(source.className, message, logLevel.DEBUG, name, undefined, payload);
+        this.format(source.className, message, LogLevel.DEBUG, name, undefined, payload);
     }
     format(source, message, level, name, code, payload, stack) {
         if (level >= this.level) {
@@ -98,12 +98,12 @@ class sdkLogger {
                 finalOutput += ` payload=${payloadOut}`;
             }
             switch (level) {
-                case logLevel.ERROR: {
+                case LogLevel.ERROR: {
                     console.error(finalOutput);
                     break;
                 }
-                case logLevel.ALERT:
-                case logLevel.INFO: {
+                case LogLevel.ALERT:
+                case LogLevel.INFO: {
                     console.info(finalOutput);
                     break;
                 }
@@ -120,7 +120,7 @@ class sdkLogger {
 /**
  * Instantiate a module-provided logger at load time
  */
-exports.commonLogger = new sdkLogger(logLevel.INFO, false);
+exports.commonLogger = new SdkLogger(LogLevel.INFO, false);
 /**
  * Developer might decide to change the loglevel of the logger object at runtime
  * @param newLevel the new log level

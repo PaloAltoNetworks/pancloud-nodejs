@@ -1,25 +1,25 @@
-import { embededCredentials, EventService, esFilterBuilderCfg, LoggingService, ENTRYPOINT, lsQuery, emitterInterface, logLevel } from 'pancloud-nodejs'
+import { EmbededCredentials, EventService, EsFilterBuilderCfg, LoggingService, ENTRYPOINT, LsQuery, EmitterInterface, LogLevel } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
 const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
 let now = Math.floor(Date.now() / 1000)
 let es: EventService
 
-let query1: lsQuery = {
+let query1: LsQuery = {
     query: 'select * from panw.traffic limit 40000',
     startTime: now - 36000,
     endTime: now,
     maxWaitTime: 1000,
 }
 
-let query2: lsQuery = {
+let query2: LsQuery = {
     query: 'select * from panw.threat limit 30000',
     startTime: now - 36000,
     endTime: now,
     maxWaitTime: 1000
 }
 
-let builderCfg: esFilterBuilderCfg = {
+let builderCfg: EsFilterBuilderCfg = {
     filter: [
         { table: "panw.traffic", timeout: 1000 },
         { table: "panw.dpi", timeout: 1000 },
@@ -39,23 +39,23 @@ let builderCfg: esFilterBuilderCfg = {
  * Use the loggingservice.js launcher to call this main() function
  */
 export async function main(): Promise<void> {
-    let c = await embededCredentials.factory({
-        client_id: c_id,
-        client_secret: c_secret,
-        refresh_token: r_token,
-        access_token: a_token
+    let c = await EmbededCredentials.factory({
+        clientId: c_id,
+        clientSecret: c_secret,
+        refreshToken: r_token,
+        accessToken: a_token
     })
     es = await EventService.factory(entryPoint, {
         credential: c,
         fetchTimeout: 45000
-        // level: logLevel.DEBUG
+        // level: LogLevel.DEBUG
     })
     await es.filterBuilder(builderCfg)
     console.log("Successfully started the Event Service notifier")
     let ls = await LoggingService.factory(entryPoint, {
         credential: c,
         fetchTimeout: 45000
-        // level: logLevel.DEBUG
+        // level: LogLevel.DEBUG
     })
     let job1 = ls.query(query1, { event: receiver }) // Schedule query 1 and register the receiver
     let job2 = ls.query(query2, { event: receiver }) // Schedule query 2 with no additional registration
@@ -78,7 +78,7 @@ export async function main(): Promise<void> {
 let lQid = ""
 let eventCounter = 0
 
-function receiver(e: emitterInterface<any[]>): void {
+function receiver(e: EmitterInterface<any[]>): void {
     if (e.source != lQid) {
         lQid = e.source
         console.log(`\nReceiving: Event Type: ${e.logType} from ${e.source}`)

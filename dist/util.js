@@ -12,7 +12,7 @@ function isDecoDnsItem(item) {
 /**
  * Class containing a static public method with utilities
  */
-class util {
+class Util {
     static dnsResolve(label, offsets = {}) {
         if (!label.length) {
             return "";
@@ -65,7 +65,7 @@ class util {
             let itemType = item[type_property];
             Object.keys(item).forEach(key => {
                 if (key == type_property) {
-                    item[key] = util.typeAlias[item[key]];
+                    item[key] = Util.typeAlias[item[key]];
                     return;
                 }
                 let dDnsItem = item[key];
@@ -74,7 +74,7 @@ class util {
                     offsets[dDnsItem.seqno] = label;
                     if (key == name_property) {
                         try {
-                            item[key].value = util.dnsResolve(label, offsets);
+                            item[key].value = Util.dnsResolve(label, offsets);
                         }
                         catch (_a) {
                             throw new Error(`Unable to decode ${JSON.stringify(item)}`);
@@ -102,7 +102,7 @@ class util {
                         return;
                     }
                     try {
-                        dDnsItem.value = util.dnsResolve(label, offsets);
+                        dDnsItem.value = Util.dnsResolve(label, offsets);
                     }
                     catch (_b) {
                         throw new Error(`Unable to decode ${JSON.stringify(item)}`);
@@ -123,14 +123,14 @@ class util {
         let decoded = true;
         try {
             if (event['dns-req-query-items']) {
-                util.dnsProcessElement(event['dns-req-query-items'], {}, 'dns-req-query-name', 'dns-req-query-type');
+                Util.dnsProcessElement(event['dns-req-query-items'], {}, 'dns-req-query-name', 'dns-req-query-type');
             }
             let offsets = {};
             if (event['dns-rsp-query-items']) {
-                util.dnsProcessElement(event['dns-rsp-query-items'], offsets, 'dns-rsp-query-name', 'dns-rsp-query-type');
+                Util.dnsProcessElement(event['dns-rsp-query-items'], offsets, 'dns-rsp-query-name', 'dns-rsp-query-type');
             }
             if (event['dns-rsp-resource-record-items']) {
-                util.dnsProcessElement(event['dns-rsp-resource-record-items'], offsets, 'dns-rsp-rr-name', 'dns-rsp-rr-type');
+                Util.dnsProcessElement(event['dns-rsp-resource-record-items'], offsets, 'dns-rsp-rr-name', 'dns-rsp-rr-type');
             }
         }
         catch (e) {
@@ -171,7 +171,7 @@ class util {
         return pcapBody;
     }
 }
-util.typeAlias = {
+Util.typeAlias = {
     1: "A",
     28: "AAAA",
     18: "AFSDB",
@@ -216,4 +216,4 @@ util.typeAlias = {
     251: "AXFR",
     41: "OPT"
 };
-exports.util = util;
+exports.Util = Util;

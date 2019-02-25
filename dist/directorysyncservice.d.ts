@@ -1,6 +1,6 @@
 import { ENTRYPOINT } from "./common";
-import { coreClass, coreOptions, coreStats } from "./core";
-interface dssDomain {
+import { CoreClass, CoreOptions, CoreStats } from "./core";
+interface DssDomain {
     "dn": string;
     "dns": string;
     "netbios": string;
@@ -10,27 +10,27 @@ interface dssDomain {
         "syncUpdateTime": number;
     };
 }
-interface dssQuery {
+interface DssQuery {
     domainName: string;
     lastSyncTmp?: number;
     syncUpdateTime?: number;
     objects?: any[];
     directoryEntries?: any[];
 }
-interface dssResponseQuery {
+interface DssResponseQuery {
     count: number;
     pageNumber: number;
     pageSize: number;
     unreadResults?: number;
-    result: dssQuery[];
+    result: DssQuery[];
 }
-export interface dssStats extends coreStats {
+export interface DssStats extends CoreStats {
     queries: number;
     domainCall: number;
     attributeCall: number;
     countCall: number;
 }
-interface dssQueryFilter {
+interface DssQueryFilter {
     domain: string;
     name?: {
         attributeName: 'Common-Name' | 'Distinguished Name' | 'Name' | 'SAM Account Name' | 'SID' | 'User Principal Name';
@@ -49,19 +49,19 @@ interface dssQueryFilter {
     pageNumber?: number;
     pageSize?: number;
 }
-export declare class DirectorySyncService extends coreClass {
-    protected stats: dssStats;
+export declare class DirectorySyncService extends CoreClass {
+    protected stats: DssStats;
     private dssAttrMap;
     private constructor();
-    static factory(entryPoint: ENTRYPOINT, ops: coreOptions): Promise<DirectorySyncService>;
+    static factory(entryPoint: ENTRYPOINT, ops: CoreOptions): Promise<DirectorySyncService>;
     private fetcher;
-    attributes(): Promise<DSSAttributeMap>;
-    domains(): Promise<dssDomain[]>;
-    count(domain: string, objClass: DSSObjClass): Promise<number>;
-    query(objClass: DSSObjClass, query?: dssQueryFilter | {}): Promise<dssResponseQuery>;
+    attributes(): Promise<DssAttributeMap>;
+    domains(): Promise<DssDomain[]>;
+    count(domain: string, objClass: DssObjClass): Promise<number>;
+    query(objClass: DssObjClass, query?: DssQueryFilter | {}): Promise<DssResponseQuery>;
 }
-export declare type DSSObjClass = "containers" | "computers" | "ous" | "groups" | "users";
-export interface DSSAttributeMap {
+export declare type DssObjClass = "containers" | "computers" | "ous" | "groups" | "users";
+export interface DssAttributeMap {
     "computer": {
         "Common-Name": string;
         "Distinguished Name": string;

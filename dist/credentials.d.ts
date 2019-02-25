@@ -5,46 +5,46 @@
 /**
  * Configuration options to instantiate the credentials class. Find usage in the {@link Credentials} constructor
  */
-export interface credOptions {
-    client_id: string;
-    client_secret: string;
-    access_token?: string;
-    refresh_token?: string;
-    idp_token_url?: string;
-    redirect_uri?: string;
+export interface CredentialsOptions {
+    clientId: string;
+    clientSecret: string;
+    accessToken?: string;
+    refreshToken?: string;
+    idpTokenUrl?: string;
+    redirectUri?: string;
     code?: string;
 }
 export declare abstract class Credentials {
-    private valid_until;
-    private access_token;
+    private validUntil;
+    private accessToken;
     className: string;
-    constructor(access_token: string, expires_in?: number);
-    private static valid_until;
-    protected set_access_token(access_token: string, expires_in?: number): void;
-    get_access_token(): string;
-    get_expiration(): number;
+    constructor(accessToken: string, expiresIn?: number);
+    private static validUntil;
+    protected setAccessToken(accessToken: string, expiresIn?: number): void;
+    getAccessToken(): string;
+    getExpiration(): number;
     autoRefresh(): Promise<boolean>;
-    abstract refresh_access_token(): Promise<void>;
-    abstract revoke_tokens(): Promise<void>;
+    abstract refreshAccessToken(): Promise<void>;
+    abstract revokeToken(): Promise<void>;
 }
 /**
  * Credential class keeps data and methods needed to maintain Application Framework access token alive
  */
-export declare class embededCredentials extends Credentials {
-    private refresh_token;
-    private client_id;
-    private client_secret;
-    private idp_token_url;
+export declare class EmbededCredentials extends Credentials {
+    private refreshToken;
+    private clientId;
+    private clientSecret;
+    private idpTokenUrl;
     static className: string;
     /**
      * class constructor not exposed. You must use the static {@link Credentials.factory} instead
-     * @param client_id Mandatory. Application Framework's `client_id` string
-     * @param client_secret Mandatory. Application Framework's `client_secret` string
-     * @param access_token Optional. If not provided then the factory method will use the `refresh_token` to
+     * @param clientId Mandatory. Application Framework's `client_id` string
+     * @param clientSecret Mandatory. Application Framework's `client_secret` string
+     * @param accessToken Optional. If not provided then the factory method will use the `refresh_token` to
      * get a new one at instantiation time.
-     * @param refresh_token Mandatory. The factory method also supports fetching the `refresh_token` if the OAUTH2
+     * @param refreshToken Mandatory. The factory method also supports fetching the `refresh_token` if the OAUTH2
      * one time code is provided
-     * @param idp_token_url Optional. If not provided then the constant {@link IDP_TOKEN_URL} will be used instead
+     * @param idpTokenUrl Optional. If not provided then the constant {@link IDP_TOKEN_URL} will be used instead
      */
     private constructor();
     /**
@@ -54,17 +54,17 @@ export declare class embededCredentials extends Credentials {
      * `refresh_token` or fetching a fresh `access_token` if only the `refresh_token` is provided or fetching
      * a new credential set of the OAUTH2 `code` is provided
      */
-    static factory(opt: credOptions): Promise<Credentials>;
+    static factory(opt: CredentialsOptions): Promise<Credentials>;
     /**
      * Static class method to exchange a 60 seconds OAUTH2 code for valid credentials
-     * @param client_id OAUTH2 app `client_id`
-     * @param client_secret OAUTH2 app `client_secret`
+     * @param clientId OAUTH2 app `client_id`
+     * @param clientSecret OAUTH2 app `client_secret`
      * @param code OAUTH2 app 60 seconds one time `code`
-     * @param idp_token_url OAUTH2 Identity Provider URL entry point
-     * @param redirect_uri OAUTH2 app `redirect_uri` callback
+     * @param idpTokenUrl OAUTH2 Identity Provider URL entry point
+     * @param redirectUri OAUTH2 app `redirect_uri` callback
      * @returns a new set of tokens
      */
-    private static fetch_tokens;
+    private static fetchTokens;
     /**
      * Implements the Application Framework OAUTH2 refresh token operation
      * @param client_id OAUTH2 app `client_id`
@@ -73,13 +73,13 @@ export declare class embededCredentials extends Credentials {
      * @param idp_token_url OAUTH2 Identity Provider URL entry point
      * @returns a new set of tokens
      */
-    private static refresh_tokens;
+    private static refreshTokens;
     /**
      * Attempts to refresh the current `access_token`. It might throw exceptions
      */
-    refresh_access_token(): Promise<void>;
+    refreshAccessToken(): Promise<void>;
     /**
      * Use this method when a customer is unsubscribing the OAUTH2 application to revoke the granted `refresh_token`
      */
-    revoke_tokens(): Promise<void>;
+    revokeToken(): Promise<void>;
 }

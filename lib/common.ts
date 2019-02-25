@@ -2,16 +2,16 @@
  * Provides common resources for other modules in the pancloud SDK
  */
 
-import { sdkErr } from './error'
+import { SdkErr } from './error'
 
 /**
  * A pancloud class must provide a className property that will be used to format its log messages
  */
-export interface pancloudClass {
+export interface PancloudClass {
     className: string
 }
 
-export enum logLevel {
+export enum LogLevel {
     DEBUG = 0,
     INFO = 1,
     ALERT = 2,
@@ -21,12 +21,12 @@ export enum logLevel {
 /**
  * User-provided logger classes are supported as long as they adhere to this interface
  */
-export interface pancloudLogger {
-    level: logLevel,
-    error(e: sdkErr): void,
-    alert(source: pancloudClass, message: string, name?: string): void,
-    info(source: pancloudClass, message: string, name?: string): void,
-    debug(source: pancloudClass, message: string, name?: string, payload?: any): void
+export interface PancloudLogger {
+    level: LogLevel,
+    error(e: SdkErr): void,
+    alert(source: PancloudClass, message: string, name?: string): void,
+    info(source: PancloudClass, message: string, name?: string): void,
+    debug(source: PancloudClass, message: string, name?: string, payload?: any): void
 }
 
 const LTYPES = {
@@ -76,8 +76,8 @@ export function isKnownLogType(t: string): t is LOGTYPE {
 /**
  * Centralized logging capability for the whole pancloud SDK
  */
-class sdkLogger implements pancloudLogger {
-    level: logLevel
+class SdkLogger implements PancloudLogger {
+    level: LogLevel
     private stackTrace: boolean
 
     /**
@@ -85,30 +85,30 @@ class sdkLogger implements pancloudLogger {
      * @param level only messages with a level equal or avobe this provided value will be loogged
      * @param stackTrace boolean value to toggle stacktrace logging
      */
-    constructor(level: logLevel, stackTrace = true) {
+    constructor(level: LogLevel, stackTrace = true) {
         this.level = level
         this.stackTrace = stackTrace
     }
 
-    error(e: sdkErr): void {
+    error(e: SdkErr): void {
         this.format(e.getSourceClass(),
-            e.getErrorMessage(), logLevel.ERROR,
+            e.getErrorMessage(), LogLevel.ERROR,
             e.name, e.getErrorCode(), undefined, e.stack)
     }
 
-    alert(source: pancloudClass, message: string, name?: string): void {
-        this.format(source.className, message, logLevel.ALERT, name)
+    alert(source: PancloudClass, message: string, name?: string): void {
+        this.format(source.className, message, LogLevel.ALERT, name)
     }
 
-    info(source: pancloudClass, message: string, name?: string): void {
-        this.format(source.className, message, logLevel.INFO, name)
+    info(source: PancloudClass, message: string, name?: string): void {
+        this.format(source.className, message, LogLevel.INFO, name)
     }
 
-    debug(source: pancloudClass, message: string, name?: string, payload?: any): void {
-        this.format(source.className, message, logLevel.DEBUG, name, undefined, payload)
+    debug(source: PancloudClass, message: string, name?: string, payload?: any): void {
+        this.format(source.className, message, LogLevel.DEBUG, name, undefined, payload)
     }
 
-    private format(source: string, message: string, level: logLevel, name?: string, code?: string, payload?: any, stack?: string) {
+    private format(source: string, message: string, level: LogLevel, name?: string, code?: string, payload?: any, stack?: string) {
         if (level >= this.level) {
             let output: { [i: string]: string } = {
                 source,
@@ -142,12 +142,12 @@ class sdkLogger implements pancloudLogger {
                 finalOutput += ` payload=${payloadOut}`
             }
             switch (level) {
-                case logLevel.ERROR: {
+                case LogLevel.ERROR: {
                     console.error(finalOutput)
                     break
                 }
-                case logLevel.ALERT:
-                case logLevel.INFO: {
+                case LogLevel.ALERT:
+                case LogLevel.INFO: {
                     console.info(finalOutput)
                     break
                 }
@@ -165,13 +165,13 @@ class sdkLogger implements pancloudLogger {
 /**
  * Instantiate a module-provided logger at load time
  */
-export let commonLogger: pancloudLogger = new sdkLogger(logLevel.INFO, false)
+export let commonLogger: PancloudLogger = new SdkLogger(LogLevel.INFO, false)
 
 /**
  * Developer might decide to change the loglevel of the logger object at runtime
  * @param newLevel the new log level
  */
-export function setLogLevel(newLevel: logLevel): void {
+export function setLogLevel(newLevel: LogLevel): void {
     commonLogger.level = newLevel
 }
 
@@ -179,7 +179,7 @@ export function setLogLevel(newLevel: logLevel): void {
  * Changes the common logger variable to a user-provided object
  * @param logger user provided pancloudLogger compliant object to be used for SDK logging
  */
-export function setLogger(logger: pancloudLogger): void {
+export function setLogger(logger: PancloudLogger): void {
     commonLogger = logger
 }
 
@@ -191,7 +191,7 @@ export function setLogger(logger: pancloudLogger): void {
  * @param handler function that implements the operation
  * @param params additional arguments to be passed to the handler function
  */
-export async function retrier<T, O>(source: pancloudClass, n = 3, delay = 100, handler: (...args: T[]) => Promise<O>, ...params: T[]): Promise<O> {
+export async function retrier<T, O>(source: PancloudClass, n = 3, delay = 100, handler: (...args: T[]) => Promise<O>, ...params: T[]): Promise<O> {
     let a = n
     let lastError: Error | undefined = undefined
     while (a > 0) {

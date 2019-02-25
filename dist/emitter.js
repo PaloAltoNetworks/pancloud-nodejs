@@ -9,19 +9,19 @@ const util_1 = require("./util");
 const EVENT_EVENT = 'EVENT_EVENT';
 const PCAP_EVENT = 'PCAP_EVENT';
 const CORR_EVENT = 'CORR_EVENT';
-class emitter extends core_1.coreClass {
+class Emitter extends core_1.CoreClass {
     constructor(baseUrl, ops) {
         super(baseUrl, ops);
         this.className = "emitterClass";
         this.allowDupReceiver = (ops.allowDup == undefined) ? false : ops.allowDup;
         this.newEmitter();
-        if (ops.level != undefined && ops.level != common_1.logLevel.INFO) {
+        if (ops.level != undefined && ops.level != common_1.LogLevel.INFO) {
             common_1.commonLogger.level = ops.level;
         }
         this.stats = Object.assign({ correlationEmitted: 0, eventsEmitted: 0, pcapsEmitted: 0 }, this.stats);
         if (ops.l2Corr) {
             this.l2enable = true;
-            this.l2engine = new l2correlator_1.macCorrelator(ops.l2Corr.timeWindow, ops.l2Corr.absoluteTime, ops.l2Corr.gcMultiplier);
+            this.l2engine = new l2correlator_1.MacCorrelator(ops.l2Corr.timeWindow, ops.l2Corr.absoluteTime, ops.l2Corr.gcMultiplier);
             this.stats.correlationStats = this.l2engine.stats;
         }
         else {
@@ -130,7 +130,7 @@ class emitter extends core_1.coreClass {
         };
         if (e.message) {
             e.message.forEach(x => {
-                let pcapBody = util_1.util.pcaptize(x);
+                let pcapBody = util_1.Util.pcaptize(x);
                 if (pcapBody) {
                     this.stats.pcapsEmitted++;
                     message.message = pcapBody;
@@ -171,4 +171,4 @@ class emitter extends core_1.coreClass {
         }
     }
 }
-exports.emitter = emitter;
+exports.Emitter = Emitter;

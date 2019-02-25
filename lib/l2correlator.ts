@@ -1,64 +1,64 @@
-import { emitterInterface } from "./emitter"
+import { EmitterInterface } from "./emitter"
 import { LOGTYPE } from "./common"
 
-interface event {
+interface Event {
     time_generated: string
     sessionid: string
 }
 
-function isEvent(x: any): x is event {
+function isEvent(x: any): x is Event {
     return ('time_generated' in x) && ('sessionid' in x)
 }
 
-interface l3event extends event {
+interface L3event extends Event {
     src: string
     dst: string
 }
 
-function isL3Event(x: any): x is l3event {
+function isL3Event(x: any): x is L3event {
     return isEvent(x) && ('src' in x) && ('dst' in x)
 }
 
-interface l2event extends event {
+interface L2event extends Event {
     "extended-traffic-log-mac": string
     "extended-traffic-log-mac-stc": string
 }
 
-function isL2Event(x: any): x is l2event {
+function isL2Event(x: any): x is L2event {
     return isEvent(x) && ('extended-traffic-log-mac' in x) && ('extended-traffic-log-mac-stc' in x)
 }
 
-export type correlatedEvent = l2event & l3event
+export type CorrelatedEvent = L2event & L3event
 
-export interface procResponse {
-    plain: emitterInterface<any[]>[]
-    correlated?: emitterInterface<correlatedEvent[]>
+export interface ProcResponse {
+    plain: EmitterInterface<any[]>[]
+    correlated?: EmitterInterface<CorrelatedEvent[]>
 }
 
-interface dbItem {
+interface DbItem {
     ts: number
-    element: event
+    element: Event
     meta: {
         source: string
         logType?: LOGTYPE
     }
 }
 
-export interface correlationStats {
+export interface CorrelationStats {
     agedOut: number,
     dbWaterMark: number,
     dbInserts: number,
     discardedEvents: number
 }
 
-export class macCorrelator {
+export class MacCorrelator {
     private ageout: number
     private absoluteTime: boolean
     private gbMultiplier: number
     private gbAttempt: number
-    private db: dbItem[]
+    private db: DbItem[]
     private lastTs: number
-    stats: correlationStats
+    stats: CorrelationStats
 
     constructor(ageout = 120, absoluteTime = false, gbMultiplier = 0) {
         this.ageout = ageout
@@ -75,7 +75,7 @@ export class macCorrelator {
         }
     }
 
-    private gb(): dbItem[] | null {
+    private gb(): DbItem[] | null {
         this.gbAttempt++
         if (this.gbAttempt > this.gbMultiplier) {
             this.gbAttempt = 0
@@ -99,11 +99,11 @@ export class macCorrelator {
         return null
     }
 
-    private update(dbI: dbItem): { noncorr?: dbItem[], corr?: dbItem } | null {
+    private update(dbI: DbItem): { noncorr?: DbItem[], corr?: DbItem } | null {
         if (this.db.length > this.stats.dbWaterMark) {
             this.stats.dbWaterMark = this.db.length
         }
-        let correlatedEvent: l2event & l3event
+        let correlatedEvent: L2event & L3event
         if (dbI.ts > this.lastTs) {
             this.lastTs = dbI.ts
         }
@@ -162,10 +162,10 @@ export class macCorrelator {
         return { noncorr: [dbI] }
     }
 
-    public process(e: emitterInterface<any[]>): procResponse {
+    public process(e: EmitterInterface<any[]>): ProcResponse {
         if (e.message) {
-            let plainResponse: { [i: string]: emitterInterface<any[]> } = {}
-            let corrResponse: emitterInterface<correlatedEvent[]> | undefined
+            let plainResponse: { [i: string]: EmitterInterface<any[]> } = {}
+            let corrResponse: EmitterInterface<CorrelatedEvent[]> | undefined
             plainResponse[e.source] = { source: e.source, logType: e.logType, message: [] }
             e.message.forEach(x => {
                 if (isEvent(x)) {
@@ -195,12 +195,12 @@ export class macCorrelator {
                             }
                             if (updateResp.corr) {
                                 if (corrResponse) {
-                                    corrResponse.message!.push(updateResp.corr.element as correlatedEvent)
+                                    corrResponse.message!.push(updateResp.corr.element as CorrelatedEvent)
                                 } else {
                                     corrResponse = {
                                         source: e.source,
                                         logType: e.logType,
-                                        message: [updateResp.corr.element as correlatedEvent]
+                                        message: [updateResp.corr.element as CorrelatedEvent]
                                     }
                                 }
                             }
@@ -219,9 +219,9 @@ export class macCorrelator {
         return { plain: [e] }
     }
 
-    public flush(): procResponse {
-        let mapped: { [key: number]: emitterInterface<any[]> } = this.db.reduce(
-            (acc: { [key: string]: emitterInterface<any[]> }, item) => {
+    public flush(): ProcResponse {
+        let mapped: { [key: number]: EmitterInterface<any[]> } = this.db.reduce(
+            (acc: { [key: string]: EmitterInterface<any[]> }, item) => {
                 if (item.meta.source in acc) {
                     acc[item.meta.source].message!.push(item.element)
                 } else {

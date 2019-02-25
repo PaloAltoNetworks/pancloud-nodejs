@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const url_1 = require("url");
 const core_1 = require("./core");
 const exceptions_1 = require("./exceptions");
-const dssPath = "directory-sync-service/v1";
+const DSS_PATH = "directory-sync-service/v1";
 function isDssDomain(obj) {
     return obj.dn && typeof obj.dn == 'string' &&
         obj.dns && typeof obj.dns == 'string' &&
@@ -48,14 +48,14 @@ function isDssResponseQuery(obj) {
     }
     return false;
 }
-class DirectorySyncService extends core_1.coreClass {
+class DirectorySyncService extends core_1.CoreClass {
     constructor(entryPoint, ops) {
         super(entryPoint, ops);
         this.className = "DirectorySyncService";
         this.stats = Object.assign({ queries: 0, domainCall: 0, attributeCall: 0, countCall: 0 }, this.stats);
     }
     static async factory(entryPoint, ops) {
-        return new DirectorySyncService(new url_1.URL(dssPath, entryPoint).toString(), ops);
+        return new DirectorySyncService(new url_1.URL(DSS_PATH, entryPoint).toString(), ops);
     }
     async fetcher(path, checker, action, query) {
         let res;

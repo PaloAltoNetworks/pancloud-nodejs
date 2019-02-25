@@ -1,10 +1,10 @@
-import { embededCredentials, LoggingService, ENTRYPOINT, lsQuery, emitterInterface, logLevel } from 'pancloud-nodejs'
+import { EmbededCredentials, LoggingService, ENTRYPOINT, LsQuery, EmitterInterface, LogLevel } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
 const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
 let now = Math.floor(Date.now() / 1000)
 
-let query: lsQuery = {
+let query: LsQuery = {
     query: 'select * from panw.traffic limit 40000',
     startTime: now - 3600,
     endTime: now,
@@ -17,16 +17,16 @@ let ls: LoggingService
  * Use the loggingservice.js launcher to call this main() function
  */
 export async function main(): Promise<void> {
-    let c = await embededCredentials.factory({
-        client_id: c_id,
-        client_secret: c_secret,
-        refresh_token: r_token,
-        access_token: a_token
+    let c = await EmbededCredentials.factory({
+        clientId: c_id,
+        clientSecret: c_secret,
+        refreshToken: r_token,
+        accessToken: a_token
     })
     ls = await LoggingService.factory(entryPoint, {
         credential: c,
         fetchTimeout: 45000
-        // level: logLevel.DEBUG
+        // level: LogLevel.DEBUG
     })
     try {
         let result = await ls.query(query, { event: receiver })
@@ -41,7 +41,7 @@ export async function main(): Promise<void> {
 let lQid = ""
 let eventCounter = 0
 
-function receiver(e: emitterInterface<any[]>): void {
+function receiver(e: EmitterInterface<any[]>): void {
     if (e.source != lQid) {
         lQid = e.source
         console.log(`\nReceiving: Event Type: ${e.logType} from ${e.source}`)

@@ -3,8 +3,8 @@
  */
 /// <reference types="node" />
 import { LOGTYPE, ENTRYPOINT } from './common';
-import { emitter, emitterOptions, emitterInterface, emitterStats, l2correlation } from './emitter';
-import { sdkErr } from './error';
+import { Emitter, EmitterOptions, EmitterInterface, EmitterStats, L2correlation } from './emitter';
+import { SdkErr } from './error';
 declare const jStatus: {
     'RUNNING': string;
     'FINISHED': string;
@@ -16,7 +16,7 @@ declare const jStatus: {
  * Convenience type to guide the user to all possible LS JOB status value
  */
 export declare type jobStatus = keyof typeof jStatus;
-export interface lsStats extends emitterStats {
+export interface LsStats extends EmitterStats {
     queries: number;
     records: number;
     polls: number;
@@ -25,7 +25,7 @@ export interface lsStats extends emitterStats {
 /**
  * Interface to provide a query
  */
-export interface lsQuery {
+export interface LsQuery {
     /**
      * SQL SELECT statement that describes the log data you want to retrieve
      */
@@ -72,7 +72,7 @@ export interface lsQuery {
 /**
  * main properties of the Logging Service job result schema
  */
-export interface jobResult {
+export interface JobResult {
     queryId: string;
     sequenceNo: number;
     queryStatus: jobStatus;
@@ -88,28 +88,28 @@ export interface jobResult {
         };
     };
 }
-interface lsops extends emitterOptions {
+interface LsOps extends EmitterOptions {
     apSleep?: number;
 }
 /**
  * High-level class that implements an Application Framework Logging Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-export declare class LoggingService extends emitter {
+export declare class LoggingService extends Emitter {
     private eevent;
-    private ap_sleep;
+    private apSleep;
     private tout;
     private jobQueue;
     private lastProcElement;
     private pendingQueries;
-    protected stats: lsStats;
+    protected stats: LsStats;
     private constructor();
     /**
      * Logging Service object factory method
      * @param ops configuration object for the instance to be created
      * @returns a new Logging Service instance object with the provided configuration
      */
-    static factory(entryPoint: ENTRYPOINT, ops: lsops): LoggingService;
+    static factory(entryPoint: ENTRYPOINT, ops: LsOps): LoggingService;
     /**
      * Performs a Logging Service query call and returns a promise with the response.
      * If the "eCallBack" handler is provided then it will be registered into the event topic and
@@ -126,11 +126,11 @@ export declare class LoggingService extends emitter {
      * class configuration properties
      * @returns a promise with the Application Framework response
      */
-    query(cfg: lsQuery, CallBack?: {
-        event?: ((e: emitterInterface<any[]>) => void);
-        pcap?: ((p: emitterInterface<Buffer>) => void);
-        corr?: ((e: emitterInterface<l2correlation[]>) => void);
-    }): Promise<jobResult>;
+    query(cfg: LsQuery, CallBack?: {
+        event?: ((e: EmitterInterface<any[]>) => void);
+        pcap?: ((p: EmitterInterface<Buffer>) => void);
+        corr?: ((e: EmitterInterface<L2correlation[]>) => void);
+    }): Promise<JobResult>;
     /**
      * Used for synchronous operations (when the auto-poll feature of a query is not used)
      * @param qid the query id to poll results from
@@ -150,13 +150,13 @@ export declare class LoggingService extends emitter {
      * completion of the HTTP request
      * @returns a promise with the Application Framework response
      */
-    poll(qid: string, sequenceNo: number, maxWaitTime?: number): Promise<jobResult>;
+    poll(qid: string, sequenceNo: number, maxWaitTime?: number): Promise<JobResult>;
     private static autoPoll;
     /**
      * User can use this method to cancel (remove) a query from the auto-poll queue
      * @param qid query id to be cancelled
      */
-    cancelPoll(qid: string, err?: sdkErr): Promise<void>;
+    cancelPoll(qid: string, err?: SdkErr): Promise<void>;
     /**
      * Use this method to cancel a running query
      * @param qid the query id to be cancelled
@@ -164,6 +164,6 @@ export declare class LoggingService extends emitter {
     delete_query(queryId: string): Promise<void>;
     private eventEmitter;
     private emitterCleanup;
-    getLsStats(): lsStats;
+    getLsStats(): LsStats;
 }
 export {};

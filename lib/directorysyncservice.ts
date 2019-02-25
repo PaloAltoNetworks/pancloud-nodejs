@@ -1,11 +1,11 @@
 import { PATH, ENTRYPOINT } from "./common"
 import { URL } from 'url'
-import { coreClass, coreOptions, coreStats } from "./core"
+import { CoreClass, CoreOptions, CoreStats } from "./core"
 import { PanCloudError } from "./exceptions";
 
-const dssPath: PATH = "directory-sync-service/v1"
+const DSS_PATH: PATH = "directory-sync-service/v1"
 
-interface dssDomain {
+interface DssDomain {
     "dn": string,
     "dns": string,
     "netbios": string,
@@ -16,7 +16,7 @@ interface dssDomain {
     }
 }
 
-function isDssDomain(obj: any): obj is dssDomain {
+function isDssDomain(obj: any): obj is DssDomain {
     return obj.dn && typeof obj.dn == 'string' &&
         obj.dns && typeof obj.dns == 'string' &&
         obj.netbios && typeof obj.netbios == 'string' &&
@@ -26,42 +26,42 @@ function isDssDomain(obj: any): obj is dssDomain {
         obj.status.syncUpdateTime && typeof obj.status.syncUpdateTime == 'number'
 }
 
-interface dssResponseDomains {
-    result: dssDomain[]
+interface DssResponseDomains {
+    result: DssDomain[]
 }
 
-function isDssResponseDomains(obj: any): obj is dssResponseDomains {
+function isDssResponseDomains(obj: any): obj is DssResponseDomains {
     if (obj.result && typeof obj.result == 'object' && Array.isArray(obj.result)) {
         return (obj.result as Array<any>).every(x => isDssDomain(x))
     }
     return false
 }
 
-interface dssResponseAttrMap {
-    result: DSSAttributeMap
+interface DssResponseAttrMap {
+    result: DssAttributeMap
 }
 
-function isDssResponseAttrMap(obj: any): obj is dssResponseAttrMap {
+function isDssResponseAttrMap(obj: any): obj is DssResponseAttrMap {
     if (obj.result && typeof obj.result == 'object') {
         return isDSSAttributeMap(obj.result)
     }
     return false
 }
 
-interface dssResponseCount {
+interface DssResponseCount {
     result: {
         count: number
     }
 }
 
-function isDssResponseCount(obj: any): obj is dssResponseCount {
+function isDssResponseCount(obj: any): obj is DssResponseCount {
     if (obj.result && typeof obj.result == 'object') {
         return obj.result.count && typeof obj.result.count == 'number'
     }
     return false
 }
 
-interface dssQuery {
+interface DssQuery {
     domainName: string
     lastSyncTmp?: number,
     syncUpdateTime?: number,
@@ -69,7 +69,7 @@ interface dssQuery {
     directoryEntries?: any[]
 }
 
-function isDssQuery(obj: any): obj is dssQuery {
+function isDssQuery(obj: any): obj is DssQuery {
     return obj.domainName && typeof obj.domainName == 'string' &&
         (!('lastSyncTmp' in obj) || typeof obj.lastSyncTmp == 'number') &&
         (!('syncUpdateTime' in obj) || typeof obj.syncUpdateTime == 'number') &&
@@ -77,15 +77,15 @@ function isDssQuery(obj: any): obj is dssQuery {
         (!('directoryEntries' in obj) || (typeof obj.directoryEntries == 'object' && Array.isArray(obj.directoryEntries)))
 }
 
-interface dssResponseQuery {
+interface DssResponseQuery {
     count: number,
     pageNumber: number,
     pageSize: number,
     unreadResults?: number,
-    result: dssQuery[]
+    result: DssQuery[]
 }
 
-function isDssResponseQuery(obj: any): obj is dssResponseQuery {
+function isDssResponseQuery(obj: any): obj is DssResponseQuery {
     if (obj.result && typeof obj.result == 'object' && Array.isArray(obj.result) &&
         obj.count && typeof obj.count == 'number' &&
         obj.pageNumber && typeof obj.pageNumber == 'number' &&
@@ -96,14 +96,14 @@ function isDssResponseQuery(obj: any): obj is dssResponseQuery {
     return false
 }
 
-export interface dssStats extends coreStats {
+export interface DssStats extends CoreStats {
     queries: number,
     domainCall: number,
     attributeCall: number,
     countCall: number
 }
 
-interface dssQueryFilter {
+interface DssQueryFilter {
     domain: string,
     name?: {
         attributeName: 'Common-Name' | 'Distinguished Name' | 'Name' | 'SAM Account Name' | 'SID' | 'User Principal Name',
@@ -123,11 +123,11 @@ interface dssQueryFilter {
     pageSize?: number
 }
 
-export class DirectorySyncService extends coreClass {
-    protected stats: dssStats
-    private dssAttrMap: DSSAttributeMap
+export class DirectorySyncService extends CoreClass {
+    protected stats: DssStats
+    private dssAttrMap: DssAttributeMap
 
-    private constructor(entryPoint: string, ops: coreOptions) {
+    private constructor(entryPoint: string, ops: CoreOptions) {
         super(entryPoint, ops)
         this.className = "DirectorySyncService"
         this.stats = {
@@ -139,11 +139,11 @@ export class DirectorySyncService extends coreClass {
         }
     }
 
-    static async factory(entryPoint: ENTRYPOINT, ops: coreOptions) {
-        return new DirectorySyncService(new URL(dssPath, entryPoint).toString(), ops)
+    static async factory(entryPoint: ENTRYPOINT, ops: CoreOptions) {
+        return new DirectorySyncService(new URL(DSS_PATH, entryPoint).toString(), ops)
     }
 
-    private async fetcher<T, R>(path: string, checker: (a: any) => a is T, action: (b: T) => R, query?: dssQueryFilter | {}): Promise<R> {
+    private async fetcher<T, R>(path: string, checker: (a: any) => a is T, action: (b: T) => R, query?: DssQueryFilter | {}): Promise<R> {
         let res: any
         if (query) {
             res = await this.fetchPostWrap(path, JSON.stringify(query))
@@ -156,7 +156,7 @@ export class DirectorySyncService extends coreClass {
         throw new PanCloudError(`Invalid schema in the response received: ${JSON.stringify(res)}`)
     }
 
-    async attributes(): Promise<DSSAttributeMap> {
+    async attributes(): Promise<DssAttributeMap> {
         this.stats.attributeCall++
         return this.fetcher('/attributes', isDssResponseAttrMap, x => {
             this.dssAttrMap = x.result
@@ -164,26 +164,26 @@ export class DirectorySyncService extends coreClass {
         })
     }
 
-    async domains(): Promise<dssDomain[]> {
+    async domains(): Promise<DssDomain[]> {
         this.stats.domainCall++
         return this.fetcher('/domains', isDssResponseDomains, x => x.result)
     }
 
-    async count(domain: string, objClass: DSSObjClass): Promise<number> {
+    async count(domain: string, objClass: DssObjClass): Promise<number> {
         this.stats.countCall++
         return this.fetcher(`/${objClass}/count?domain=${encodeURIComponent(domain)}`,
             isDssResponseCount, x => x.result.count)
     }
 
-    async query(objClass: DSSObjClass, query: dssQueryFilter | {} = {}): Promise<dssResponseQuery> {
+    async query(objClass: DssObjClass, query: DssQueryFilter | {} = {}): Promise<DssResponseQuery> {
         this.stats.queries++
         return this.fetcher(`/${objClass}`, isDssResponseQuery, x => x, query)
     }
 }
 
-export type DSSObjClass = "containers" | "computers" | "ous" | "groups" | "users"
+export type DssObjClass = "containers" | "computers" | "ous" | "groups" | "users"
 
-export interface DSSAttributeMap {
+export interface DssAttributeMap {
     "computer": {
         "Common-Name": string,
         "Distinguished Name": string,
@@ -261,6 +261,6 @@ export interface DSSAttributeMap {
     }
 }
 
-function isDSSAttributeMap(obj: any): obj is DSSAttributeMap {
+function isDSSAttributeMap(obj: any): obj is DssAttributeMap {
     return true
 }

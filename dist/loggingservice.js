@@ -49,12 +49,12 @@ function isJobResult(obj) {
  * High-level class that implements an Application Framework Logging Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-class LoggingService extends emitter_1.emitter {
+class LoggingService extends emitter_1.Emitter {
     constructor(baseUrl, ops) {
         super(baseUrl, ops);
         this.className = "LoggingService";
         this.eevent = { source: 'LoggingService' };
-        this.ap_sleep = (ops.apSleep) ? ops.apSleep : MSLEEP;
+        this.apSleep = (ops.apSleep) ? ops.apSleep : MSLEEP;
         this.jobQueue = {};
         this.lastProcElement = 0;
         this.pendingQueries = [];
@@ -135,7 +135,7 @@ class LoggingService extends emitter_1.emitter {
                     this.jobQueue[r_json.queryId].sequenceNo = r_json.sequenceNo + 1;
                 }
                 if (this.pendingQueries.length > 0 && this.tout === undefined) {
-                    this.tout = timers_1.setTimeout(LoggingService.autoPoll, this.ap_sleep, this);
+                    this.tout = timers_1.setTimeout(LoggingService.autoPoll, this.apSleep, this);
                     common_1.commonLogger.info(this, "query autopoller scheduled", "QUERY");
                 }
                 return jobPromise;
@@ -168,15 +168,15 @@ class LoggingService extends emitter_1.emitter {
         if (maxWaitTime && maxWaitTime > 0) {
             targetPath += `?maxWaitTime=${maxWaitTime}`;
         }
-        let r_json = await this.fetchGetWrap(targetPath);
-        this.lastResponse = r_json;
-        if (isJobResult(r_json)) {
-            if (r_json.result.esResult) {
-                this.stats.records += r_json.result.esResult.hits.hits.length;
+        let rJson = await this.fetchGetWrap(targetPath);
+        this.lastResponse = rJson;
+        if (isJobResult(rJson)) {
+            if (rJson.result.esResult) {
+                this.stats.records += rJson.result.esResult.hits.hits.length;
             }
-            return r_json;
+            return rJson;
         }
-        throw new error_1.PanCloudError(this, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(r_json)}`);
+        throw new error_1.PanCloudError(this, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(rJson)}`);
     }
     static async autoPoll(ls) {
         ls.lastProcElement++;
@@ -213,7 +213,7 @@ class LoggingService extends emitter_1.emitter {
             }
         }
         if (ls.pendingQueries.length) {
-            ls.tout = timers_1.setTimeout(LoggingService.autoPoll, ls.ap_sleep, ls);
+            ls.tout = timers_1.setTimeout(LoggingService.autoPoll, ls.apSleep, ls);
         }
         else {
             ls.tout = undefined;
@@ -260,7 +260,7 @@ class LoggingService extends emitter_1.emitter {
      */
     delete_query(queryId) {
         this.stats.deletes++;
-        return this.void_X_Operation(`/${queryId}`, undefined, "DELETE");
+        return this.voidXOperation(`/${queryId}`, undefined, "DELETE");
     }
     eventEmitter(j) {
         if (!(j.result.esResult &&

@@ -3,18 +3,18 @@
  */
 /// <reference types="node" />
 import { LOGTYPE, ENTRYPOINT } from './common';
-import { emitter, emitterOptions, emitterInterface, emitterStats, l2correlation } from './emitter';
+import { Emitter, EmitterOptions, EmitterInterface, EmitterStats, L2correlation } from './emitter';
 /**
  * Event Service emitted message interface
  */
-interface esEvent {
+interface EsEvent {
     logType: LOGTYPE;
     event: any[];
 }
 /**
  * Interface that describes an Event Service filter
  */
-export interface esFilter {
+export interface EsFilter {
     filters: {
         [index: string]: {
             filter: string;
@@ -24,43 +24,43 @@ export interface esFilter {
     }[];
     flush?: boolean;
 }
-interface esPollOptions {
+interface EsPollOptions {
     pollTimeout: number;
     ack: boolean;
 }
-interface esFilterOptions {
+interface EsFilterOptions {
     callBack?: {
-        event?: ((e: emitterInterface<any[]>) => void);
-        pcap?: ((p: emitterInterface<Buffer>) => void);
-        corr?: ((e: emitterInterface<l2correlation[]>) => void);
+        event?: ((e: EmitterInterface<any[]>) => void);
+        pcap?: ((p: EmitterInterface<Buffer>) => void);
+        corr?: ((e: EmitterInterface<L2correlation[]>) => void);
     };
     sleep?: number;
-    poolOptions?: esPollOptions;
+    poolOptions?: EsPollOptions;
 }
 /**
  * Interface that describes a valid Event Service filter configuration
  */
-export interface esFilterCfg {
-    filter: esFilter;
-    filterOptions: esFilterOptions;
+export interface EsFilterCfg {
+    filter: EsFilter;
+    filterOptions: EsFilterOptions;
 }
 /**
  * High level interface to build a valid {@link esFilterCfg} object using the {@link EventService.filterBuilder} method
  */
-export interface esFilterBuilderCfg {
+export interface EsFilterBuilderCfg {
     filter: {
         table: LOGTYPE;
         where?: string;
         timeout?: number;
         batchSize?: number;
     }[];
-    filterOptions: esFilterOptions;
+    filterOptions: EsFilterOptions;
     flush?: boolean;
 }
-export interface esOptions extends emitterOptions {
+export interface EsOptions extends EmitterOptions {
     channelId?: string;
 }
-export interface esStats extends emitterStats {
+export interface EsStats extends EmitterStats {
     records: number;
     polls: number;
     deletes: number;
@@ -74,18 +74,18 @@ export interface esStats extends emitterStats {
  * High-level class that implements an Application Framework Event Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-export declare class EventService extends emitter implements Iterable<Promise<esEvent[]>> {
+export declare class EventService extends Emitter implements Iterable<Promise<EsEvent[]>> {
     private filterPath;
     private pollPath;
     private ackPath;
     private nackPath;
     private flushPath;
     private popts;
-    private ap_sleep;
+    private apSleep;
     private tout;
     private polling;
     private eevent;
-    protected stats: esStats;
+    protected stats: EsStats;
     private constructor();
     private setChannel;
     /**
@@ -94,25 +94,25 @@ export declare class EventService extends emitter implements Iterable<Promise<es
      * {@link esOptions}
      * @returns an instantiated {@link EventService} object
      */
-    static factory(entryPoint: ENTRYPOINT, esOps: esOptions): EventService;
+    static factory(entryPoint: ENTRYPOINT, esOps: EsOptions): EventService;
     /**
      * @returns the current Event Service filter configuration
      */
-    getFilters(): Promise<esFilter>;
+    getFilters(): Promise<EsFilter>;
     /**
      * Sets a new Event Service configuration
      * @param fcfg The new service configuration. If the configuration includes a valid callBack handler (currently
      * only {@link esFilterCfg.filterOptions.eventCallBack} is supported) then the class AutoPoll feature is turned on
      * @returns a promise to the current Event Service to ease promise chaining
      */
-    setFilters(fcfg: esFilterCfg): Promise<EventService>;
+    setFilters(fcfg: EsFilterCfg): Promise<EventService>;
     /**
      * Convenience function to set a valid {@link esFilterCfg} configuration in the Event Service using a
      * description object
      * @param fbcfg The filter description object
      * @returns a promise to the current Event Service to ease promise chaining
      */
-    filterBuilder(fbcfg: esFilterBuilderCfg): Promise<EventService>;
+    filterBuilder(fbcfg: EsFilterBuilderCfg): Promise<EventService>;
     /**
      * Sets an empty filter in the Event Service
      * @param flush Optinal `flush` attribute (defaults to `false`)
@@ -131,12 +131,12 @@ export declare class EventService extends emitter implements Iterable<Promise<es
      * Performs a `FLUSH` operation on the Event Service
      */
     flush(): Promise<void>;
-    [Symbol.iterator](): IterableIterator<Promise<esEvent[]>>;
+    [Symbol.iterator](): IterableIterator<Promise<EsEvent[]>>;
     /**
      * Performs a `POLL` operation on the Event Service
      * @returns a promise that resolves to an array of {@link esEvent} objects
      */
-    poll(): Promise<esEvent[]>;
+    poll(): Promise<EsEvent[]>;
     private static autoPoll;
     /**
      * Stops this class AutoPoll feature for this Event Service instance
@@ -148,6 +148,6 @@ export declare class EventService extends emitter implements Iterable<Promise<es
      * the method {@link EventService.setFilters}
      */
     resume(): void;
-    getEsStats(): esStats;
+    getEsStats(): EsStats;
 }
 export {};
