@@ -3,9 +3,9 @@
  */
 
 import { URL } from 'url'
-import { PATH, isKnownLogType, LOGTYPE, commonLogger, ENTRYPOINT } from './common'
-import { emitter, emitterOptions, emitterInterface, emitterStats, l2correlation } from './emitter'
-import { PanCloudError, isSdkError, sdkErr } from './error'
+import { ApiPath, isKnownLogType, LogType, commonLogger, EntryPoint } from './common'
+import { Emitter, EmitterOptions, EmitterInterface, EmitterStats, L2correlation } from './emitter'
+import { PanCloudError, isSdkError, SdkErr } from './error'
 import { setTimeout } from 'timers';
 
 /**
@@ -13,7 +13,7 @@ import { setTimeout } from 'timers';
  * function signature
  */
 const MSLEEP = 200;
-const lsPath: PATH = "logging-service/v1/queries"
+const lsPath: ApiPath = "logging-service/v1"
 const jStatus = {
     'RUNNING': '', 'FINISHED': '', 'JOB_FINISHED': '', 'JOB_FAILED': '', 'CANCELLED': ''
 }
@@ -29,16 +29,30 @@ function isJobStatus(s: string): s is jobStatus {
 
 let knownIndexes: string[] = ["panw.", "tms."]
 
-export interface lsStats extends emitterStats {
-    queries: number,
+/** Runtime statistics provided by the LoggingService class */
+interface LsStats extends EmitterStats {
+    /**
+     * Number of records retrieved from the Application Framework
+     */
     records: number,
+    /**
+     * Number of **POST** calls to the **\/** entry point
+     */
+    queries: number,
+    /**
+     * Number of **GET** calls to the **\/** entry point
+     */
     polls: number,
+    /**
+     * Number of **DELETE** calls to the **\/** entry point
+     */
     deletes: number
 }
+
 /**
  * Interface to provide a query
  */
-export interface lsQuery {
+export interface LsQueryCfg {
     /**
      * SQL SELECT statement that describes the log data you want to retrieve
      */
@@ -72,7 +86,8 @@ export interface lsQuery {
     client?: string,
     /**
      * Adds context to a query (such as a transaction ID or other unique identifier) which
-     * has meaning to your application. If specified, this field must contained a wellformed JSON object. The data specified on this field is echoed back in all result
+     * has meaning to your application. If specified, this field must contained a wellformed
+     * JSON object. The data specified on this field is echoed back in all result
      * sequences returned in response to the query
      */
     clientParameters?: any
@@ -80,16 +95,38 @@ export interface lsQuery {
      * Not mandatory but highly recommended for async operations. Providing the log type here will
      * prevent the event receiver from having to "guess" the log type by scanning the results
      */
-    logType?: LOGTYPE
+    logType?: LogType,
+    /**
+     * Object with optional callback (event receiver) functions. If present, the call to **query()**
+     * will toggle the auto-poll feature for this query and registers the provided handlres in the 
+     * correspondnig topic so it can receive result events. Providing 'null' will trigger the
+     * auto-poll feature for the query but without registering any handler to the 'event' topic
+     * (to be used when a handler is already registered to receive events)
+     */
+    callBack?: {
+        /**
+         * A receiver for the **EVENT_EVENT** topic
+         */
+        event?: ((e: EmitterInterface<any[]>) => void),
+        /**
+         * A receiver for the **PCAP_EVENT** topic
+         */
+        pcap?: ((p: EmitterInterface<Buffer>) => void),
+        /**
+         * A receiver for the **CORR_EVENT** topic
+         */
+        corr?: ((e: EmitterInterface<L2correlation[]>) => void)
+    }
 }
 
 /**
  * main properties of the Logging Service job result schema
  */
-export interface jobResult {
+export interface JobResult {
     queryId: string,
     sequenceNo: number,
     queryStatus: jobStatus,
+    clientParameters: any
     result: {
         esResult: null | {
             hits: {
@@ -103,11 +140,12 @@ export interface jobResult {
     }
 }
 
-function isJobResult(obj: any): obj is jobResult {
+function isJobResult(obj: any): obj is JobResult {
     let sf = obj && typeof obj == 'object'
     sf = sf && 'queryId' in obj && typeof obj.queryId == 'string'
     sf = sf && 'sequenceNo' in obj && typeof obj.sequenceNo == 'number'
     sf = sf && 'queryStatus' in obj && typeof obj.queryStatus == 'string' && isJobStatus(obj.queryStatus)
+    sf = sf && 'clientParameters' in obj && typeof obj.clientParameters == 'object'
     if (sf && 'result' in obj && typeof obj.result == 'object' && 'esResult' in obj.result) {
         let esr = obj.result.esResult
         if (esr == null) {
@@ -126,36 +164,68 @@ function isJobResult(obj: any): obj is jobResult {
     return sf
 }
 
-interface jobEntry {
-    logtype: LOGTYPE | undefined,
+interface JobEntry {
+    logtype: LogType | undefined,
     sequenceNo: number,
-    resolve: (jResult: jobResult) => void,
+    resolve: (jResult: JobResult) => void,
     reject: (reason: any) => void,
     maxWaitTime?: number
+    clientParameters?: any
 }
 
-interface lsops extends emitterOptions {
-    apSleep?: number
+/**
+ * A success response indicates that the Logging Service received your entire payload, and that the payload
+ * contained a valid JSON array of valid JSON objects. Success here does not necessarily mean that your log
+ * records have been successfully processed by the Logging Service and can now be queried
+ */
+interface WriteResult {
+    /**
+     * This field value is always true
+     */
+    success: boolean,
+    /**
+     * Array that contains all of the log record UUIDs that were received in the request. If
+     * you identified a UUID field when you registered your app, and you provide UUIDs
+     * on your log records, then those UUIDs are included in this array. Otherwise, UUIDs
+     * assigned by the Logging Service are included in this array
+     */
+    uuids: string[]
+}
+
+function isWriteResult(obj: any): obj is WriteResult {
+    return typeof obj == 'object' &&
+        obj.success && typeof obj.success == 'boolean' &&
+        obj.uuids && typeof obj.uuids == 'object' && Array.isArray(obj.uuids)
+}
+
+/**
+ * Options for the LoggingService class factory
+ */
+export interface LsOptions extends EmitterOptions {
+    /**
+     * Amount of milliseconds to wait between consecutive autopoll() attempts. Defaults to **200ms**
+     */
+    autoPollSleep?: number
 }
 
 /**
  * High-level class that implements an Application Framework Logging Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-export class LoggingService extends emitter {
-    private eevent: emitterInterface<any[]>
-    private ap_sleep: number
+export class LoggingService extends Emitter {
+    private eevent: EmitterInterface<any[]>
+    private apSleep: number
     private tout: NodeJS.Timeout | undefined
-    private jobQueue: { [i: string]: jobEntry }
+    private jobQueue: { [i: string]: JobEntry }
     private lastProcElement: number
     private pendingQueries: string[]
-    protected stats: lsStats
+    protected stats: LsStats
 
-    private constructor(baseUrl: string, ops: lsops) {
+    private constructor(baseUrl: string, ops: LsOptions) {
         super(baseUrl, ops)
         this.className = "LoggingService"
         this.eevent = { source: 'LoggingService' }
-        this.ap_sleep = (ops.apSleep) ? ops.apSleep : MSLEEP
+        this.apSleep = (ops.autoPollSleep) ? ops.autoPollSleep : MSLEEP
         this.jobQueue = {}
         this.lastProcElement = 0
         this.pendingQueries = []
@@ -169,94 +239,84 @@ export class LoggingService extends emitter {
     }
 
     /**
-     * Logging Service object factory method
-     * @param ops configuration object for the instance to be created
-     * @returns a new Logging Service instance object with the provided configuration
+     * Static factory method to instantiate an Event Service object
+     * @param entryPoint a **string** containing a valid Application Framework API URL
+     * @param lsOps a valid **LsOptions** configuration objet
+     * @returns an instantiated **LoggingService** object
      */
-    static factory(entryPoint: ENTRYPOINT, ops: lsops): LoggingService {
-        return new LoggingService(new URL(lsPath, entryPoint).toString(), ops)
+    static factory(entryPoint: EntryPoint, lsOps: LsOptions): LoggingService {
+        return new LoggingService(new URL(lsPath, entryPoint).toString(), lsOps)
     }
 
     /**
      * Performs a Logging Service query call and returns a promise with the response.
-     * If the "eCallBack" handler is provided then it will be registered into the event topic and
+     * If the _CallBack_ handler is provided then it will be registered into the event topic and
      * this query will be placed into the auto-poll queue (returned events will be emitted to the handler)
      * @param cfg query configuration object
-     * @param eCallBack toggles the auto-poll feature for this query and registers the handler in the 'event' topic
+     * @param CallBack toggles the auto-poll feature for this query and registers the handler in the 'event' topic
      * so it can receive result events. Providing 'null' will trigger the auto-poll feature for the query but without
      * registering any handler to the 'event' topic (to be used when a handler is already registered to receive events)
-     * @param sleep if provided (in milliseconds), it will change this Logging Service object auto-poll delay
-     * value (the amount of time between consecutive polls). Please note that this may affect other queries already in
-     * the auto-poll queue
-     * @param fetchTimeout milliseconds before issuing a timeout exeception. The operation is wrapped by a 'retrier'
-     * that will retry the operation. User can change default retry parameters (3 times / 100 ms) using the right
-     * class configuration properties
      * @returns a promise with the Application Framework response
      */
-    async query(
-        cfg: lsQuery,
-        CallBack?: {
-            event?: ((e: emitterInterface<any[]>) => void),
-            pcap?: ((p: emitterInterface<Buffer>) => void),
-            corr?: ((e: emitterInterface<l2correlation[]>) => void)
-        }): Promise<jobResult> {
+    async query(cfg: LsQueryCfg): Promise<JobResult> {
         this.stats.queries++
         let providedLogType = cfg.logType
         delete cfg.logType
         let cfgStr = JSON.stringify(cfg)
-        let r_json = await this.fetchPostWrap(undefined, cfgStr)
-        this.lastResponse = r_json
-        if (!(isJobResult(r_json))) {
-            throw new PanCloudError(this, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(r_json)}`)
+        let rJson = await this.fetchPostWrap('/queries', cfgStr)
+        this.lastResponse = rJson
+        if (!isJobResult(rJson)) {
+            throw new PanCloudError(this, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(rJson)}`)
         }
-        if (r_json.result.esResult) {
-            this.stats.records += r_json.result.esResult.hits.hits.length
+        if (rJson.result.esResult) {
+            this.stats.records += rJson.result.esResult.hits.hits.length
         }
-        if (r_json.queryStatus != "JOB_FAILED") {
-            if (CallBack !== undefined) {
-                if (CallBack.event) {
-                    if (!this.registerEvenetListener(CallBack.event)) {
+        if (rJson.queryStatus != "JOB_FAILED") {
+            if (cfg.callBack) {
+                if (cfg.callBack.event) {
+                    if (!this.registerEventListener(cfg.callBack.event)) {
                         commonLogger.info(this, "Event receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER")
                     }
                 }
-                if (CallBack.pcap) {
-                    if (!this.registerPcapListener(CallBack.pcap)) {
+                if (cfg.callBack.pcap) {
+                    if (!this.registerPcapListener(cfg.callBack.pcap)) {
                         commonLogger.info(this, "PCAP receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER")
                     }
                 }
-                if (CallBack.corr) {
-                    if (!this.registerCorrListener(CallBack.corr)) {
+                if (cfg.callBack.corr) {
+                    if (!this.registerCorrListener(cfg.callBack.corr)) {
                         commonLogger.info(this, "CORR receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER")
                     }
                 }
                 let seq = 0
-                let jobPromise = new Promise<jobResult>((resolve, reject) => {
-                    this.jobQueue[r_json.queryId] = {
+                let jobPromise = new Promise<JobResult>((resolve, reject) => {
+                    this.jobQueue[rJson.queryId] = {
                         logtype: providedLogType,
                         sequenceNo: seq,
                         resolve: resolve,
                         reject: reject,
-                        maxWaitTime: cfg.maxWaitTime
+                        maxWaitTime: cfg.maxWaitTime,
+                        clientParameters: cfg.clientParameters
                     }
                 })
                 this.pendingQueries = Object.keys(this.jobQueue)
-                this.eventEmitter(r_json)
-                if (r_json.queryStatus == "JOB_FINISHED") {
-                    let jobResolver = this.jobQueue[r_json.queryId].resolve
-                    this.emitterCleanup(r_json)
-                    jobResolver(r_json)
+                this.eventEmitter(rJson)
+                if (rJson.queryStatus == "JOB_FINISHED") {
+                    let jobResolver = this.jobQueue[rJson.queryId].resolve
+                    this.emitterCleanup(rJson)
+                    jobResolver(rJson)
                 }
-                if (r_json.queryStatus == "FINISHED") {
-                    this.jobQueue[r_json.queryId].sequenceNo = r_json.sequenceNo + 1
+                if (rJson.queryStatus == "FINISHED") {
+                    this.jobQueue[rJson.queryId].sequenceNo = rJson.sequenceNo + 1
                 }
                 if (this.pendingQueries.length > 0 && this.tout === undefined) {
-                    this.tout = setTimeout(LoggingService.autoPoll, this.ap_sleep, this)
+                    this.tout = setTimeout(LoggingService.autoPoll, this.apSleep, this)
                     commonLogger.info(this, "query autopoller scheduled", "QUERY")
                 }
                 return jobPromise
             }
         }
-        return r_json
+        return rJson
     }
 
     /**
@@ -278,21 +338,21 @@ export class LoggingService extends emitter {
      * completion of the HTTP request
      * @returns a promise with the Application Framework response
      */
-    async poll(qid: string, sequenceNo: number, maxWaitTime?: number): Promise<jobResult> {
+    async poll(qid: string, sequenceNo: number, maxWaitTime?: number): Promise<JobResult> {
         this.stats.polls++
-        let targetPath = `/${qid}/${sequenceNo}`
+        let targetPath = `/queries/${qid}/${sequenceNo}`
         if (maxWaitTime && maxWaitTime > 0) {
             targetPath += `?maxWaitTime=${maxWaitTime}`
         }
-        let r_json = await this.fetchGetWrap(targetPath);
-        this.lastResponse = r_json
-        if (isJobResult(r_json)) {
-            if (r_json.result.esResult) {
-                this.stats.records += r_json.result.esResult.hits.hits.length
+        let rJson = await this.fetchGetWrap(targetPath);
+        this.lastResponse = rJson
+        if (isJobResult(rJson)) {
+            if (rJson.result.esResult) {
+                this.stats.records += rJson.result.esResult.hits.hits.length
             }
-            return r_json
+            return rJson
         }
-        throw new PanCloudError(this, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(r_json)}`)
+        throw new PanCloudError(this, 'PARSER', `Response is not a valid LS JOB Doc: ${JSON.stringify(rJson)}`)
     }
 
     private static async autoPoll(ls: LoggingService): Promise<void> {
@@ -302,7 +362,13 @@ export class LoggingService extends emitter {
         }
         let currentQid = ls.pendingQueries[ls.lastProcElement]
         let currentJob = ls.jobQueue[currentQid]
-        let jobR: jobResult = { queryId: "", queryStatus: "RUNNING", result: { esResult: null }, sequenceNo: 0 }
+        let jobR: JobResult = {
+            queryId: "",
+            queryStatus: "RUNNING",
+            result: { esResult: null },
+            sequenceNo: 0,
+            clientParameters: {}
+        }
         try {
             jobR = await ls.poll(currentQid, currentJob.sequenceNo, currentJob.maxWaitTime)
             if (jobR.queryStatus == "JOB_FAILED") {
@@ -327,7 +393,7 @@ export class LoggingService extends emitter {
             }
         }
         if (ls.pendingQueries.length) {
-            ls.tout = setTimeout(LoggingService.autoPoll, ls.ap_sleep, ls)
+            ls.tout = setTimeout(LoggingService.autoPoll, ls.apSleep, ls)
         } else {
             ls.tout = undefined
             commonLogger.info(ls, "query autopoller de-scheduled", "AUTOPOLL")
@@ -338,7 +404,7 @@ export class LoggingService extends emitter {
      * User can use this method to cancel (remove) a query from the auto-poll queue
      * @param qid query id to be cancelled 
      */
-    public cancelPoll(qid: string, err?: sdkErr): Promise<void> {
+    public cancelPoll(qid: string, err?: SdkErr): Promise<void> {
         if (qid in this.jobQueue) {
             let jobToCancel = this.jobQueue[qid]
             delete this.jobQueue[qid]
@@ -361,23 +427,44 @@ export class LoggingService extends emitter {
                             }
                         }
                     },
-                    sequenceNo: 0
+                    sequenceNo: 0,
+                    clientParameters: jobToCancel.clientParameters
                 })
             }
         }
-        return this.delete_query(qid)
+        return this.deleteQuery(qid)
     }
 
     /**
      * Use this method to cancel a running query
      * @param qid the query id to be cancelled 
      */
-    public delete_query(queryId: string): Promise<void> {
+    public deleteQuery(queryId: string): Promise<void> {
         this.stats.deletes++
-        return this.void_X_Operation(`/${queryId}`, undefined, "DELETE")
+        return this.voidXOperation(`/queries/${queryId}`, undefined, "DELETE")
     }
 
-    private eventEmitter(j: jobResult): void {
+    /**
+     * Use this method to write data to the Logging service
+     * @param vendorName The vendor name you were given by Palo Alto Networks to use for
+     * writing logrecords
+     * @param logType The type of log records you're writing to the Logging Service. The type that you
+     * provide here must be the log type that you registered with Palo Alto Networks.
+     * Also, all log records submitted for this request must conform to this type
+     * @param data The logs that you write to the Logging Service must at a minimum include the
+     * primary timestamp and log type fields that you identified when you registered your app with
+     * Palo Alto Networks. Refer to the documentation for more details
+     */
+    public async write(vendorName: string, logType: string, data: any[]): Promise<WriteResult> {
+        let rJson = await this.fetchPostWrap(`/logs/${vendorName}/${logType}`, JSON.stringify(data))
+        this.lastResponse = rJson
+        if (!isWriteResult(rJson)) {
+            throw new PanCloudError(this, 'PARSER', `Response is not a valid LS Write Response: ${JSON.stringify(rJson)}`)
+        }
+        return rJson
+    }
+
+    private eventEmitter(j: JobResult): void {
         if (!(j.result.esResult &&
             this.pendingQueries.includes(j.queryId) &&
             j.result.esResult.hits.hits.length > 0)) {
@@ -415,7 +502,7 @@ export class LoggingService extends emitter {
         this.emitMessage(this.eevent)
     }
 
-    private emitterCleanup(j: jobResult): void {
+    private emitterCleanup(j: JobResult): void {
         let qid = j.queryId
         if (this.pendingQueries.length == 1) {
             this.l2CorrFlush()
@@ -426,7 +513,7 @@ export class LoggingService extends emitter {
         this.pendingQueries = Object.keys(this.jobQueue)
     }
 
-    public getLsStats(): lsStats {
+    public getLsStats(): LsStats {
         return this.stats
     }
 }

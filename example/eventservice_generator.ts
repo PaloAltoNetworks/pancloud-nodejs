@@ -1,9 +1,9 @@
-import { embededCredentials, EventService, ENTRYPOINT, esFilterBuilderCfg, logLevel } from 'pancloud-nodejs'
+import { EmbeddedCredentials, EventService, EsFilterBuilderCfg, LogLevel } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
-const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
+const entryPoint = "https://api.us.paloaltonetworks.com"
 
-let builderCfg: esFilterBuilderCfg = {
+let builderCfg: EsFilterBuilderCfg = {
     filter: [
         { table: "panw.traffic", timeout: 1000, batchSize: 8000 },
         { table: "panw.dpi", timeout: 1000, batchSize: 8000 },
@@ -16,15 +16,15 @@ let builderCfg: esFilterBuilderCfg = {
  * Use the enventservice.js launcher to call this main() function
  */
 export async function main(): Promise<void> {
-    let c = await embededCredentials.factory({
-        client_id: c_id,
-        client_secret: c_secret,
-        refresh_token: r_token,
-        access_token: a_token
+    let c = await EmbeddedCredentials.factory({
+        clientId: c_id,
+        clientSecret: c_secret,
+        refreshToken: r_token,
+        accessToken: a_token
     })
     let es = await EventService.factory(entryPoint, {
         credential: c,
-        // level: logLevel.DEBUG
+        // level: LogLevel.DEBUG
     })
     await es.filterBuilder(builderCfg)
     let iterations = 10
@@ -37,4 +37,6 @@ export async function main(): Promise<void> {
         })
     }
     await es.clearFilter()
+    console.log("Event Service stats")
+    console.log(JSON.stringify(es.getEsStats(), undefined, " "))
 }

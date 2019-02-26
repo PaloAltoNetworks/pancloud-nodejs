@@ -1,9 +1,9 @@
-import { embededCredentials, EventService, ENTRYPOINT, esFilterBuilderCfg, emitterInterface, logLevel } from 'pancloud-nodejs'
+import { EmbeddedCredentials, EventService, EsFilterBuilderCfg, EmitterInterface, LogLevel } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
-const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
+const entryPoint = "https://api.us.paloaltonetworks.com"
 
-let builderCfg: esFilterBuilderCfg = {
+let builderCfg: EsFilterBuilderCfg = {
     filter: [
         { table: "panw.traffic", timeout: 1000 },
         { table: "panw.dpi", timeout: 1000 },
@@ -23,16 +23,16 @@ let builderCfg: esFilterBuilderCfg = {
  * Use the enventservice.js launcher to call this main() function
  */
 export async function main(): Promise<void> {
-    let c = await embededCredentials.factory({
-        client_id: c_id,
-        client_secret: c_secret,
-        refresh_token: r_token,
-        access_token: a_token
+    let c = await EmbeddedCredentials.factory({
+        clientId: c_id,
+        clientSecret: c_secret,
+        refreshToken: r_token,
+        accessToken: a_token
     })
     let es = await EventService.factory(entryPoint, {
         credential: c,
         fetchTimeout: 45000
-        // level: logLevel.DEBUG
+        // level: LogLevel.DEBUG
     })
     await es.filterBuilder(builderCfg)
     console.log("Set the filter and registered the async event receiver")
@@ -52,7 +52,7 @@ export async function main(): Promise<void> {
 let lType = ""
 let eventCounter = 0
 
-function receiver(e: emitterInterface<any[]>): void {
+function receiver(e: EmitterInterface<any[]>): void {
     if (e.logType && e.logType != lType) {
         lType = e.logType
         console.log(`\nReceiving: Event Type: ${lType} from ${e.source}`)
