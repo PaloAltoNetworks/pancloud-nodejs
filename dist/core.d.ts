@@ -1,6 +1,12 @@
 import { Credentials } from './credentials';
 import { LogLevel } from './common';
+/**
+ * Core class runtime statistic metrics
+ */
 export interface CoreStats {
+    /**
+     * The number of API transactions completed
+     */
     apiTransactions: number;
 }
 /**
@@ -27,6 +33,9 @@ export interface CoreOptions {
      * Delay (in milliseconds) between retry attempts
      */
     retrierDelay?: number;
+    /**
+     * If provided, the underlying `fetch` module will use this value as request timeout
+     */
     fetchTimeout?: number | undefined;
 }
 /**

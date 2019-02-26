@@ -1,21 +1,24 @@
-import { EmbededCredentials, LoggingService, ENTRYPOINT, LsQuery, EmitterInterface, LogLevel } from 'pancloud-nodejs'
+import { EmbeddedCredentials, LoggingService, LsQueryCfg, EmitterInterface, LogLevel } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
-const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
+const entryPoint = "https://api.us.paloaltonetworks.com"
 let now = Math.floor(Date.now() / 1000)
 
-let query: LsQuery = {
+let query: LsQueryCfg = {
     query: 'select * from panw.traffic limit 4',
     startTime: now - 3600,
     endTime: now,
-    maxWaitTime: 1000
+    maxWaitTime: 1000,
+    callBack: {
+        event: receiver
+    }
 }
 
 /**
  * Use the loggingservice.js launcher to call this main() function
  */
 export async function main(): Promise<void> {
-    let c = await EmbededCredentials.factory({
+    let c = await EmbeddedCredentials.factory({
         clientId: c_id,
         clientSecret: c_secret,
         refreshToken: r_token,
@@ -27,7 +30,7 @@ export async function main(): Promise<void> {
         // level: LogLevel.DEBUG
     })
     try {
-        let result = await ls.query(query, { event: receiver })
+        let result = await ls.query(query)
         console.log(`Job ${result.queryId} completed with status ${result.queryStatus}`)
     } catch (e) {
         console.log(`Something went wrong with a LS query ${e}`)

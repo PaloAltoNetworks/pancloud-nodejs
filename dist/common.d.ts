@@ -51,16 +51,13 @@ declare const LTYPES: {
 /**
  * Convenience type to guide the developer using the right entry points
  */
-export declare type ENTRYPOINT = 'https://api.eu.paloaltonetworks.com' | 'https://api.us.paloaltonetworks.com';
-/**
- * Convenience type to guide the developer using the right paths
- */
-export declare type PATH = "event-service/v1/channels" | "logging-service/v1/queries" | "directory-sync-service/v1";
+export declare type EntryPoint = 'https://api.eu.paloaltonetworks.com' | 'https://api.us.paloaltonetworks.com';
+export declare type ApiPath = "event-service/v1/channels" | "logging-service/v1" | "directory-sync-service/v1";
 /**
  * Convenience type to guide the developer using the common log types
  */
-export declare type LOGTYPE = keyof typeof LTYPES;
-export declare function isKnownLogType(t: string): t is LOGTYPE;
+export declare type LogType = keyof typeof LTYPES;
+export declare function isKnownLogType(t: string): t is LogType;
 /**
  * Instantiate a module-provided logger at load time
  */

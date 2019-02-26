@@ -1,8 +1,8 @@
-export { Credentials, EmbededCredentials } from './credentials';
-export { LoggingService, LsQuery } from './loggingservice';
-export { EventService, EsFilterBuilderCfg, EsFilterCfg, EsFilter } from './eventservice';
-export { DirectorySyncService, DssObjClass, DssAttributeMap } from './directorysyncservice';
+export { Credentials, CredentialsOptions, EmbeddedCredentials } from './credentials';
+export { LoggingService, LsOptions, LsQueryCfg } from './loggingservice';
+export { EventService, EsOptions, EsFilterBuilderCfg, EsFilterCfg } from './eventservice';
+export { DirectorySyncService, DssOptions, DssQueryFilter } from './directorysyncservice';
 export { EmitterInterface, L2correlation } from './emitter';
-export { ApplicationFrameworkError, isSdkError } from './error';
-export { ENTRYPOINT, LOGTYPE, LogLevel, retrier } from './common';
+export { isSdkError } from './error';
+export { LogLevel, retrier } from './common';
 export { Util } from './util';

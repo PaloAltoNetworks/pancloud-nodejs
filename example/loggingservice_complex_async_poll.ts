@@ -1,22 +1,26 @@
-import { EmbededCredentials, EventService, EsFilterBuilderCfg, LoggingService, ENTRYPOINT, LsQuery, EmitterInterface, LogLevel } from 'pancloud-nodejs'
+import { EmbeddedCredentials, EventService, EsFilterBuilderCfg, LoggingService, LsQueryCfg, EmitterInterface, LogLevel } from 'pancloud-nodejs'
 import { c_id, c_secret, r_token, a_token } from './secrets'
 
-const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
+const entryPoint = "https://api.us.paloaltonetworks.com"
 let now = Math.floor(Date.now() / 1000)
 let es: EventService
 
-let query1: LsQuery = {
+let query1: LsQueryCfg = {
     query: 'select * from panw.traffic limit 40000',
     startTime: now - 36000,
     endTime: now,
     maxWaitTime: 1000,
+    callBack: {
+        event: receiver
+    }
 }
 
-let query2: LsQuery = {
+let query2: LsQueryCfg = {
     query: 'select * from panw.threat limit 30000',
     startTime: now - 36000,
     endTime: now,
-    maxWaitTime: 1000
+    maxWaitTime: 1000,
+    callBack: {}
 }
 
 let builderCfg: EsFilterBuilderCfg = {
@@ -39,7 +43,7 @@ let builderCfg: EsFilterBuilderCfg = {
  * Use the loggingservice.js launcher to call this main() function
  */
 export async function main(): Promise<void> {
-    let c = await EmbededCredentials.factory({
+    let c = await EmbeddedCredentials.factory({
         clientId: c_id,
         clientSecret: c_secret,
         refreshToken: r_token,
@@ -57,8 +61,8 @@ export async function main(): Promise<void> {
         fetchTimeout: 45000
         // level: LogLevel.DEBUG
     })
-    let job1 = ls.query(query1, { event: receiver }) // Schedule query 1 and register the receiver
-    let job2 = ls.query(query2, { event: receiver }) // Schedule query 2 with no additional registration
+    let job1 = ls.query(query1) // Schedule query 1 and register the receiver
+    let job2 = ls.query(query2) // Schedule query 2 with no additional registration
     try {
         let results = await Promise.all([job1, job2])
         results.forEach(j => {

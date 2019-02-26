@@ -7,7 +7,13 @@ import { Credentials } from './credentials'
 import { ApplicationFrameworkError, PanCloudError } from './error'
 import { commonLogger, LogLevel, retrier } from './common';
 
+/**
+ * Core class runtime statistic metrics
+ */
 export interface CoreStats {
+    /**
+     * The number of API transactions completed
+     */
     apiTransactions: number
 }
 
@@ -35,6 +41,9 @@ export interface CoreOptions {
      * Delay (in milliseconds) between retry attempts
      */
     retrierDelay?: number
+    /**
+     * If provided, the underlying `fetch` module will use this value as request timeout
+     */
     fetchTimeout?: number | undefined
 }
 
@@ -134,7 +143,7 @@ export class CoreClass {
         let r = await retrier(this, this.retrierCount, this.retrierDelay, fetch.default, url, rInit)
         let rText = await r.text()
         if (rText.length == 0) {
-            commonLogger.info(this, 'fetch response is null')
+            commonLogger.debug(this, 'fetch response is null')
             return null
         }
         let rJson: any

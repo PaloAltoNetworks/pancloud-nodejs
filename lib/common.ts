@@ -57,19 +57,16 @@ const LTYPES = {
 /**
  * Convenience type to guide the developer using the right entry points
  */
-export type ENTRYPOINT = 'https://api.eu.paloaltonetworks.com' | 'https://api.us.paloaltonetworks.com'
+export type EntryPoint = 'https://api.eu.paloaltonetworks.com' | 'https://api.us.paloaltonetworks.com'
 
-/**
- * Convenience type to guide the developer using the right paths
- */
-export type PATH = "event-service/v1/channels" | "logging-service/v1/queries" | "directory-sync-service/v1"
+export type ApiPath = "event-service/v1/channels" | "logging-service/v1" | "directory-sync-service/v1"
 
 /**
  * Convenience type to guide the developer using the common log types
  */
-export type LOGTYPE = keyof typeof LTYPES
+export type LogType = keyof typeof LTYPES
 
-export function isKnownLogType(t: string): t is LOGTYPE {
+export function isKnownLogType(t: string): t is LogType {
     return LTYPES.hasOwnProperty(t)
 }
 

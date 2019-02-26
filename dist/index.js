@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 var credentials_1 = require("./credentials");
 exports.Credentials = credentials_1.Credentials;
-exports.EmbededCredentials = credentials_1.EmbededCredentials;
+exports.EmbeddedCredentials = credentials_1.EmbeddedCredentials;
 var loggingservice_1 = require("./loggingservice");
 exports.LoggingService = loggingservice_1.LoggingService;
 var eventservice_1 = require("./eventservice");
@@ -10,7 +10,6 @@ exports.EventService = eventservice_1.EventService;
 var directorysyncservice_1 = require("./directorysyncservice");
 exports.DirectorySyncService = directorysyncservice_1.DirectorySyncService;
 var error_1 = require("./error");
-exports.ApplicationFrameworkError = error_1.ApplicationFrameworkError;
 exports.isSdkError = error_1.isSdkError;
 var common_1 = require("./common");
 exports.LogLevel = common_1.LogLevel;

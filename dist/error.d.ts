@@ -1,38 +1,23 @@
 import { PancloudClass } from './common';
-export declare type SdkErr = ApplicationFrameworkError | PanCloudError;
-declare type SdkErrName = "ApplicationFrameworkError" | "PanCloudError";
-interface AppFerr {
-    errorCode: string;
-    errorMessage: string;
-}
-interface SdkErrorObj {
+declare type SdkErrName = "PanCloudError" | "ApplicationFrameworkError";
+export declare abstract class SdkErr extends Error {
+    name: string;
+    protected errorCode: string;
+    protected errorMessage: string;
+    protected sourceClass: string;
+    constructor(message: string);
     getErrorCode(): string;
     getErrorMessage(): string;
     getSourceClass(): string;
-    setClassName(className: SdkErrName): void;
-    name: string;
+    setClassName(name: SdkErrName): void;
 }
 export declare function isSdkError(e: any): e is SdkErr;
-export declare class ApplicationFrameworkError extends Error implements AppFerr, SdkErrorObj {
-    errorMessage: string;
-    errorCode: string;
-    sourceClass: string;
+export declare class ApplicationFrameworkError extends SdkErr {
     constructor(source: PancloudClass, afError: any);
-    getErrorCode(): string;
-    getErrorMessage(): string;
-    getSourceClass(): string;
-    setClassName(name: SdkErrName): void;
 }
 declare type ErrCodes = "PARSER" | "IDENTITY" | "CONFIG" | "UNKNOWN";
-export declare class PanCloudError extends Error implements SdkErrorObj {
-    errorCode: ErrCodes;
-    errorMessage: string;
-    sourceClass: string;
+export declare class PanCloudError extends SdkErr {
     constructor(source: PancloudClass, code: ErrCodes, message: string);
     static fromError(sorce: PancloudClass, e: Error): PanCloudError;
-    getErrorCode(): string;
-    getErrorMessage(): string;
-    getSourceClass(): string;
-    setClassName(name: SdkErrName): void;
 }
 export {};

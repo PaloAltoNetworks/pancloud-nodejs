@@ -79,7 +79,7 @@ class CoreClass {
         let r = await common_1.retrier(this, this.retrierCount, this.retrierDelay, fetch.default, url, rInit);
         let rText = await r.text();
         if (rText.length == 0) {
-            common_1.commonLogger.info(this, 'fetch response is null');
+            common_1.commonLogger.debug(this, 'fetch response is null');
             return null;
         }
         let rJson;

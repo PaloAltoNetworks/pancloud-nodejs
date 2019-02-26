@@ -62,10 +62,10 @@ class EventService extends emitter_1.Emitter {
         }
         this.setChannel(ops.channelId);
         this.popts = DEFAULT_PO;
-        this.apSleep = MSLEEP;
+        this.apSleep = (ops.autoPollSleep) ? ops.autoPollSleep : MSLEEP;
         this.polling = false;
         this.eevent = { source: "EventService" };
-        this.stats = Object.assign({ acks: 0, nacks: 0, deletes: 0, filtergets: 0, filtersets: 0, flushes: 0, polls: 0, records: 0 }, this.stats);
+        this.stats = Object.assign({ acks: 0, nacks: 0, filtergets: 0, filtersets: 0, flushes: 0, polls: 0, records: 0 }, this.stats);
     }
     setChannel(channelId) {
         this.filterPath = `/${channelId}/filters`;
@@ -76,9 +76,9 @@ class EventService extends emitter_1.Emitter {
     }
     /**
      * Static factory method to instantiate an Event Service object
-     * @param esOps Instantitation configuration object accepting parameters from {@link core.coreOptions} and
-     * {@link esOptions}
-     * @returns an instantiated {@link EventService} object
+     * @param entryPoint a **string** containing a valid Application Framework API URL
+     * @param esOps a valid **EsOptions** configuration objet
+     * @returns an instantiated **EventService** object
      */
     static factory(entryPoint, esOps) {
         return new EventService(new url_1.URL(esPath, entryPoint).toString(), esOps);
@@ -96,17 +96,17 @@ class EventService extends emitter_1.Emitter {
         throw new error_1.PanCloudError(this, 'PARSER', `response is not a valid ES Filter: ${JSON.stringify(rJson)}`);
     }
     /**
-     * Sets a new Event Service configuration
+     * Low-level interface to the Event Service set filter API method. Consider using
+     * the **filterBuilder(EsFilterBuilderCfg)** method instead to assure a valid filter syntax
      * @param fcfg The new service configuration. If the configuration includes a valid callBack handler (currently
      * only {@link esFilterCfg.filterOptions.eventCallBack} is supported) then the class AutoPoll feature is turned on
      * @returns a promise to the current Event Service to ease promise chaining
      */
     async setFilters(fcfg) {
         this.stats.filtersets++;
-        this.popts = (fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO;
-        this.apSleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP;
+        this.popts = (fcfg.filterOptions && fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO;
         await this.voidXOperation(this.filterPath, JSON.stringify(fcfg.filter), 'PUT');
-        if (fcfg.filterOptions.callBack) {
+        if (fcfg.filterOptions && fcfg.filterOptions.callBack) {
             this.newEmitter(fcfg.filterOptions.callBack.event, fcfg.filterOptions.callBack.pcap, fcfg.filterOptions.callBack.corr);
             EventService.autoPoll(this);
         }
@@ -164,21 +164,24 @@ class EventService extends emitter_1.Emitter {
      */
     async ack() {
         this.stats.acks++;
-        return this.voidXOperation(this.ackPath);
+        await this.voidXOperation(this.ackPath);
+        return this;
     }
     /**
      * Performs a `NACK` operation on the Event Service
      */
     async nack() {
         this.stats.nacks++;
-        return this.voidXOperation(this.nackPath);
+        await this.voidXOperation(this.nackPath);
+        return this;
     }
     /**
      * Performs a `FLUSH` operation on the Event Service
      */
     async flush() {
         this.stats.flushes++;
-        return this.voidXOperation(this.flushPath);
+        await this.voidXOperation(this.flushPath);
+        return this;
     }
     *[Symbol.iterator]() {
         while (true) {

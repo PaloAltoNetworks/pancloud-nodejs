@@ -3,6 +3,24 @@ Object.defineProperty(exports, "__esModule", { value: true });
 function isError(obj) {
     return typeof obj.errorCode == 'string' && typeof obj.errorMessage == 'string';
 }
+class SdkErr extends Error {
+    constructor(message) {
+        super(message);
+    }
+    getErrorCode() {
+        return this.errorCode;
+    }
+    getErrorMessage() {
+        return this.errorMessage;
+    }
+    getSourceClass() {
+        return this.sourceClass;
+    }
+    setClassName(name) {
+        this.name = name;
+    }
+}
+exports.SdkErr = SdkErr;
 function isSdkError(e) {
     return e &&
         e.getErrorCode && typeof e.getErrorCode == "function" &&
@@ -12,7 +30,7 @@ function isSdkError(e) {
         (e.name == "PanCloudError" || e.name == "ApplicationFrameworkError");
 }
 exports.isSdkError = isSdkError;
-class ApplicationFrameworkError extends Error {
+class ApplicationFrameworkError extends SdkErr {
     constructor(source, afError) {
         if (isError(afError)) {
             super(afError.errorMessage);
@@ -27,21 +45,9 @@ class ApplicationFrameworkError extends Error {
         this.sourceClass = source.className;
         this.setClassName("ApplicationFrameworkError");
     }
-    getErrorCode() {
-        return this.errorCode;
-    }
-    getErrorMessage() {
-        return this.errorMessage;
-    }
-    getSourceClass() {
-        return this.sourceClass;
-    }
-    setClassName(name) {
-        this.name = name;
-    }
 }
 exports.ApplicationFrameworkError = ApplicationFrameworkError;
-class PanCloudError extends Error {
+class PanCloudError extends SdkErr {
     constructor(source, code, message) {
         super(message);
         this.errorCode = code;
@@ -53,18 +59,6 @@ class PanCloudError extends Error {
         let newpce = new PanCloudError(sorce, "UNKNOWN", e.message);
         newpce.stack = e.stack;
         return newpce;
-    }
-    getErrorCode() {
-        return this.errorCode;
-    }
-    getErrorMessage() {
-        return this.errorMessage;
-    }
-    getSourceClass() {
-        return this.sourceClass;
-    }
-    setClassName(name) {
-        this.name = name;
     }
 }
 exports.PanCloudError = PanCloudError;

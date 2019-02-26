@@ -41,43 +41,60 @@ class Emitter extends core_1.CoreClass {
         this.notifier[event] = (this.emitter.listenerCount(event) > 0);
     }
     /**
-     * Register new listeners to the 'event' topic. Enforces listener duplicate check
-     * @param l listener
-     * @returns true is the listener is accepted. False otherwise (duplicated?)
+     * Registers a client to the **EVENT_EVENT** topic
+     * @param listener function that will be provided to the **EventEmitter.on()** method and that will
+     * receive events comming from the Application Framework
+     * @returns the value _true_ if the listener is indeed registered. _false_ in case the
+     * listener has already been registered and the factory option **allowDupReceiver** was
+     * not set to _true_
      */
-    registerEvenetListener(l) {
-        return this.registerListener(EVENT_EVENT, l);
+    registerEventListener(listener) {
+        return this.registerListener(EVENT_EVENT, listener);
     }
     /**
-     * Unregisters a listener from the 'event' topic.
-     * @param l listener
+     * Unregisters the listener from the **EVENT_EVENT** topic
+     * @param listener
      */
-    unregisterEvenetListener(l) {
-        this.unregisterListener(EVENT_EVENT, l);
+    unregisterEventListener(listener) {
+        this.unregisterListener(EVENT_EVENT, listener);
     }
     /**
-     * @ignore To Be Implemented
+     * Registers a client to the **PCAP_EVENT** topic
+     * @param listener function that will be provided to the **EventEmitter.on()** method and that will
+     * receive *Buffer* instances containing a valid _libPcap_ file body for each received record
+     * containing a valid value in the _pcap_ property.
+     * @returns the value _true_ if the listener is indeed registered. _false_ in case the
+     * listener has already been registered and the factory option **allowDupReceiver** was
+     * not set to _true_
      */
-    registerPcapListener(l) {
-        return this.registerListener(PCAP_EVENT, l);
+    registerPcapListener(listener) {
+        return this.registerListener(PCAP_EVENT, listener);
     }
     /**
-     * @ignore To Be Implemented
+     * Unregisters the listener from the **PCAP_EVENT** topic
+     * @param listener
      */
-    unregisterCorrListener(l) {
-        this.unregisterListener(CORR_EVENT, l);
+    unregisterPcapListener(listener) {
+        this.unregisterListener(PCAP_EVENT, listener);
     }
     /**
-     * @ignore To Be Implemented
+     * Registers a client to the **CORR_EVENT** topic
+     * @param listener function that will be provided to the **EventEmitter.on()** method and that will
+     * receive **L2correlation** instances containing a valid _libPcap_ file body for each received record
+     * containing a valid value in the _pcap_ property.
+     * @returns the value _true_ if the listener is indeed registered. _false_ in case the
+     * listener has already been registered and the factory option **allowDupReceiver** was
+     * not set to _true_
      */
-    registerCorrListener(l) {
-        return this.registerListener(CORR_EVENT, l);
+    registerCorrListener(listener) {
+        return this.registerListener(CORR_EVENT, listener);
     }
     /**
-     * @ignore To Be Implemented
+     * Unregisters the listener from the **PCAP_EVENT** topic
+     * @param listener
      */
-    unregisterPcapListener(l) {
-        this.unregisterListener(PCAP_EVENT, l);
+    unregisterCorrListener(listener) {
+        this.unregisterListener(CORR_EVENT, listener);
     }
     newEmitter(ee, pe, ce) {
         this.emitter = new events_1.EventEmitter();
@@ -86,7 +103,7 @@ class Emitter extends core_1.CoreClass {
         });
         this.notifier = { EVENT_EVEN: false, PCAP_EVENT: false, CORRELATION_EVENT: false };
         if (ee) {
-            this.registerEvenetListener(ee);
+            this.registerEventListener(ee);
         }
         if (pe) {
             this.registerPcapListener(pe);
@@ -114,10 +131,6 @@ class Emitter extends core_1.CoreClass {
             epkg.forEach(x => this.emitEvent(x));
         }
     }
-    /**
-     * Used to send an event to all subscribers in the 'event' topic
-     * @param e the event to be sent
-     */
     emitEvent(e) {
         if (e.message) {
             this.stats.eventsEmitted += e.message.length;

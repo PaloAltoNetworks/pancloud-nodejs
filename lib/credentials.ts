@@ -43,12 +43,33 @@ const IDP_BASE_URL: string = 'https://identity.paloaltonetworks.com/as/authoriza
  * Configuration options to instantiate the credentials class. Find usage in the {@link Credentials} constructor
  */
 export interface CredentialsOptions {
+    /**
+     * Application Framework's `client_id` string
+     */
     clientId: string,
+    /**
+     * Application Framework's `client_secret` string
+     */
     clientSecret: string,
+    /**
+     * If not provided then the factory method will use the `refresh_token` to
+     * get a new one at instantiation time.
+     */
     accessToken?: string,
+    /**
+     * The factory method also supports fetching the `refresh_token` if the OAUTH2
+     * one time code is provided
+     */
     refreshToken?: string,
+    /**
+     * If not provided then the constant **IDP_TOKEN_URL** will be used instead
+     */
     idpTokenUrl?: string,
     redirectUri?: string,
+    /**
+     * Can be provided instead of the `refresh_token`. In such a case it will be
+     * used to retrieve a new set of tokens from the Identity Provider.
+     */
     code?: string,
 }
 
@@ -70,13 +91,13 @@ export abstract class Credentials {
         let exp = 0
         if (accessToken) {
             let jwtParts = accessToken.split('.')
-            if (jwtParts.length != 3) { throw new PanCloudError(EmbededCredentials, 'CONFIG', 'invalid JWT Token') }
+            if (jwtParts.length != 3) { throw new PanCloudError(EmbeddedCredentials, 'CONFIG', 'invalid JWT Token') }
             let claim: any
             try {
                 claim = JSON.parse(Buffer.from(jwtParts[1], 'base64').toString())
                 exp = Number.parseInt(claim.exp, 10)
             } catch (e) {
-                throw PanCloudError.fromError(EmbededCredentials, e)
+                throw PanCloudError.fromError(EmbeddedCredentials, e)
             }
         }
         return exp
@@ -113,24 +134,17 @@ export abstract class Credentials {
 }
 
 /**
- * Credential class keeps data and methods needed to maintain Application Framework access token alive
+ * Embe class keeps data and methods needed to maintain Application Framework access token alive
  */
-export class EmbededCredentials extends Credentials {
+export class EmbeddedCredentials extends Credentials {
     private refreshToken: string
     private clientId: string
     private clientSecret: string
     private idpTokenUrl: string
-    static className = "embededCredentials"
+    static className = "EmbeddedCredentials"
 
     /**
-     * class constructor not exposed. You must use the static {@link Credentials.factory} instead
-     * @param clientId Mandatory. Application Framework's `client_id` string
-     * @param clientSecret Mandatory. Application Framework's `client_secret` string
-     * @param accessToken Optional. If not provided then the factory method will use the `refresh_token` to
-     * get a new one at instantiation time.
-     * @param refreshToken Mandatory. The factory method also supports fetching the `refresh_token` if the OAUTH2
-     * one time code is provided
-     * @param idpTokenUrl Optional. If not provided then the constant {@link IDP_TOKEN_URL} will be used instead
+     * class constructor not exposed. You must use the static **EmbeddedCredentials.factory()** instead
      */
     private constructor(
         clientId: string, clientSecret: string,
@@ -144,19 +158,19 @@ export class EmbededCredentials extends Credentials {
     }
 
     /**
-     * Factory method to instantiate a new {@link Credentials} class based on the options provided
-     * @param opt {@link Credentials} class instantiation options
-     * @returns a {@link Credentials} class instantiated either with the provided `access_token` and
+     * Factory method to instantiate a new **EmbeddedCredentials** class based on the options provided
+     * @param opt **CredentialsOptions** class instantiation options
+     * @returns a **EmbeddedCredentials** class instantiated either with the provided `access_token` and
      * `refresh_token` or fetching a fresh `access_token` if only the `refresh_token` is provided or fetching
      * a new credential set of the OAUTH2 `code` is provided
      */
     public static async factory(opt: CredentialsOptions): Promise<Credentials> {
         if (!opt.idpTokenUrl) { opt.idpTokenUrl = IDP_TOKEN_URL }
         if (!(opt.refreshToken || opt.code)) {
-            throw new PanCloudError(EmbededCredentials, 'CONFIG', 'Invalid Credentials (code or refresh token missing)')
+            throw new PanCloudError(EmbeddedCredentials, 'CONFIG', 'Invalid Credentials (code or refresh token missing)')
         }
         if (opt.refreshToken && opt.accessToken) {
-            return new EmbededCredentials(
+            return new EmbeddedCredentials(
                 opt.clientId, opt.clientSecret,
                 opt.accessToken, opt.refreshToken,
                 opt.idpTokenUrl)
@@ -165,22 +179,22 @@ export class EmbededCredentials extends Credentials {
         let r_token: string
         if (opt.refreshToken) {
             r_token = opt.refreshToken
-            tk = await EmbededCredentials.refreshTokens(opt.clientId, opt.clientSecret, opt.refreshToken, opt.idpTokenUrl)
+            tk = await EmbeddedCredentials.refreshTokens(opt.clientId, opt.clientSecret, opt.refreshToken, opt.idpTokenUrl)
             if (tk.refresh_token) {
                 r_token = tk.refresh_token
             }
         } else if (opt.code !== undefined && opt.redirectUri !== undefined) {
-            tk = await EmbededCredentials.fetchTokens(opt.clientId, opt.clientSecret, opt.code, opt.idpTokenUrl, opt.redirectUri)
+            tk = await EmbeddedCredentials.fetchTokens(opt.clientId, opt.clientSecret, opt.code, opt.idpTokenUrl, opt.redirectUri)
             if (tk.refresh_token) {
                 r_token = tk.refresh_token
             } else {
-                throw new PanCloudError(EmbededCredentials, 'IDENTITY', 'Missing refresh_token in the response')
+                throw new PanCloudError(EmbeddedCredentials, 'IDENTITY', 'Missing refresh_token in the response')
             }
         } else {
-            throw new PanCloudError(EmbededCredentials, 'CONFIG', 'Invalid Credentials (code or redirect_uri missing)')
+            throw new PanCloudError(EmbeddedCredentials, 'CONFIG', 'Invalid Credentials (code or redirect_uri missing)')
         }
         let exp_in = parseInt(tk.expires_in)
-        return new EmbededCredentials(opt.clientId, opt.clientSecret,
+        return new EmbeddedCredentials(opt.clientId, opt.clientSecret,
             tk.access_token, r_token,
             opt.idpTokenUrl, exp_in)
     }
@@ -200,7 +214,7 @@ export class EmbededCredentials extends Credentials {
         code: string,
         idpTokenUrl: string,
         redirectUri: string): Promise<IdpResponse> {
-        let res = await retrier(EmbededCredentials, undefined, undefined, fetch, idpTokenUrl, {
+        let res = await retrier(EmbeddedCredentials, undefined, undefined, fetch, idpTokenUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -215,75 +229,75 @@ export class EmbededCredentials extends Credentials {
             })
         })
         if (!res.ok) {
-            throw new PanCloudError(EmbededCredentials, 'IDENTITY', `HTTP Error from IDP fetch operation ${res.status} ${res.statusText}`)
+            throw new PanCloudError(EmbeddedCredentials, 'IDENTITY', `HTTP Error from IDP fetch operation ${res.status} ${res.statusText}`)
         }
         let rJson: any
         try {
             rJson = await res.json()
         } catch (exception) {
-            throw new PanCloudError(EmbededCredentials, 'PARSER', `Invalid JSON fetch response: ${exception.message}`)
+            throw new PanCloudError(EmbeddedCredentials, 'PARSER', `Invalid JSON fetch response: ${exception.message}`)
         }
         if (isIdpResponse(rJson)) {
-            commonLogger.info(EmbededCredentials, 'Authorization token successfully retrieved')
+            commonLogger.info(EmbeddedCredentials, 'Authorization token successfully retrieved')
             return rJson
         }
         if (isIdpErrorResponse(rJson)) {
-            throw new PanCloudError(EmbededCredentials, 'IDENTITY', rJson.error_description)
+            throw new PanCloudError(EmbeddedCredentials, 'IDENTITY', rJson.error_description)
         }
-        throw new PanCloudError(EmbededCredentials, 'PARSER', `Unparseable response received from IDP fetch operation: "${JSON.stringify(rJson)}"`)
+        throw new PanCloudError(EmbeddedCredentials, 'PARSER', `Unparseable response received from IDP fetch operation: "${JSON.stringify(rJson)}"`)
     }
 
     /**
      * Implements the Application Framework OAUTH2 refresh token operation
-     * @param client_id OAUTH2 app `client_id`
-     * @param client_secret OAUTH2 app `client_secret`
-     * @param refresh_token Current OAUTH2 app `refresh_token` value
-     * @param idp_token_url OAUTH2 Identity Provider URL entry point
+     * @param clientId OAUTH2 app `client_id`
+     * @param clientSecret OAUTH2 app `client_secret`
+     * @param refreshToken Current OAUTH2 app `refresh_token` value
+     * @param idpTokenUrl OAUTH2 Identity Provider URL entry point
      * @returns a new set of tokens
      */
     private static async refreshTokens(
-        client_id: string,
-        client_secret: string,
-        refresh_token: string,
-        idp_token_url: string): Promise<IdpResponse> {
-        let res = await retrier(EmbededCredentials, undefined, undefined, fetch, idp_token_url, {
+        clientId: string,
+        clientSecret: string,
+        refreshToken: string,
+        idpTokenUrl: string): Promise<IdpResponse> {
+        let res = await retrier(EmbeddedCredentials, undefined, undefined, fetch, idpTokenUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             },
             body: JSON.stringify({
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "refresh_token": refresh_token,
+                "client_id": clientId,
+                "client_secret": clientSecret,
+                "refresh_token": refreshToken,
                 "grant_type": "refresh_token"
             }),
             timeout: 30000
         })
         if (!res.ok) {
-            throw new PanCloudError(EmbededCredentials, 'IDENTITY', `HTTP Error from IDP refresh operation ${res.status} ${res.statusText}`)
+            throw new PanCloudError(EmbeddedCredentials, 'IDENTITY', `HTTP Error from IDP refresh operation ${res.status} ${res.statusText}`)
         }
         let rJson: any
         try {
             rJson = await res.json()
         } catch (exception) {
-            throw new PanCloudError(EmbededCredentials, 'PARSER', `Invalid JSON refresh response: ${exception.message}`)
+            throw new PanCloudError(EmbeddedCredentials, 'PARSER', `Invalid JSON refresh response: ${exception.message}`)
         }
         if (isIdpResponse(rJson)) {
-            commonLogger.info(EmbededCredentials, 'Authorization token successfully retrieved', 'IDENTITY')
+            commonLogger.info(EmbeddedCredentials, 'Authorization token successfully retrieved', 'IDENTITY')
             return rJson
         }
         if (isIdpErrorResponse(rJson)) {
-            throw new PanCloudError(EmbededCredentials, 'IDENTITY', rJson.error_description)
+            throw new PanCloudError(EmbeddedCredentials, 'IDENTITY', rJson.error_description)
         }
-        throw new PanCloudError(EmbededCredentials, 'PARSER', `Unparseable response received from IDP refresh operation: "${JSON.stringify(rJson)}"`)
+        throw new PanCloudError(EmbeddedCredentials, 'PARSER', `Unparseable response received from IDP refresh operation: "${JSON.stringify(rJson)}"`)
     }
 
     /**
      * Attempts to refresh the current `access_token`. It might throw exceptions
      */
     public async refreshAccessToken(): Promise<void> {
-        let tk = await EmbededCredentials.refreshTokens(this.clientId, this.clientSecret, this.refreshToken, this.idpTokenUrl)
+        let tk = await EmbeddedCredentials.refreshTokens(this.clientId, this.clientSecret, this.refreshToken, this.idpTokenUrl)
         this.setAccessToken(tk.access_token, parseInt(tk.expires_in))
         if (tk.refresh_token) {
             this.refreshToken = tk.refresh_token
@@ -295,7 +309,7 @@ export class EmbededCredentials extends Credentials {
      */
     public async revokeToken(): Promise<void> {
         if (!this.refreshToken) {
-            throw new PanCloudError(EmbededCredentials, 'CONFIG', `Not valid refresh token for revoke op: ${this.refreshToken}`)
+            throw new PanCloudError(EmbeddedCredentials, 'CONFIG', `Not valid refresh token for revoke op: ${this.refreshToken}`)
         }
         let res = await fetch(IDP_REVOKE_URL, {
             method: 'POST',
@@ -311,8 +325,8 @@ export class EmbededCredentials extends Credentials {
             })
         })
         if (res.ok && res.size > 0) {
-            commonLogger.info(EmbededCredentials, 'Credentials(): Authorization token successfully revoked', 'IDENTITY');
+            commonLogger.info(EmbeddedCredentials, 'Credentials(): Authorization token successfully revoked', 'IDENTITY');
         }
-        throw new PanCloudError(EmbededCredentials, 'IDENTITY', `HTTP Error from IDP refresh operation ${res.status} ${res.statusText}`)
+        throw new PanCloudError(EmbeddedCredentials, 'IDENTITY', `HTTP Error from IDP refresh operation ${res.status} ${res.statusText}`)
     }
 }

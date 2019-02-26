@@ -48,12 +48,23 @@ function isDssResponseQuery(obj) {
     }
     return false;
 }
+/**
+ * Implements a client to the Application Framework Directory Sync Services API
+ */
 class DirectorySyncService extends core_1.CoreClass {
+    /**
+     * Constructor is private. Use the **DirectorySyncService.factory()** method instead
+     */
     constructor(entryPoint, ops) {
         super(entryPoint, ops);
         this.className = "DirectorySyncService";
-        this.stats = Object.assign({ queries: 0, domainCall: 0, attributeCall: 0, countCall: 0 }, this.stats);
+        this.stats = Object.assign({ queryCalls: 0, domainCalls: 0, attributeCalls: 0, countCalls: 0 }, this.stats);
     }
+    /**
+     * Factory method to return an instantiated **DirectorySyncService** object
+     * @param entryPoint a **string** with a valid entry point to the Application Framework API (US/EU)
+     * @param ops configuration object
+     */
     static async factory(entryPoint, ops) {
         return new DirectorySyncService(new url_1.URL(DSS_PATH, entryPoint).toString(), ops);
     }
@@ -70,24 +81,48 @@ class DirectorySyncService extends core_1.CoreClass {
         }
         throw new exceptions_1.PanCloudError(`Invalid schema in the response received: ${JSON.stringify(res)}`);
     }
+    /**
+     * Get Directory Attribute Map
+     * @returns the attribute map for this customer's directory
+     */
     async attributes() {
-        this.stats.attributeCall++;
-        return this.fetcher('/attributes', isDssResponseAttrMap, x => {
-            this.dssAttrMap = x.result;
-            return this.dssAttrMap;
-        });
+        this.stats.attributeCalls++;
+        return this.fetcher('/attributes', isDssResponseAttrMap, x => x.result);
     }
+    /**
+     * Get the list of domains managed by this agent
+     * @returns the list of domains
+     */
     async domains() {
-        this.stats.domainCall++;
+        this.stats.domainCalls++;
         return this.fetcher('/domains', isDssResponseDomains, x => x.result);
     }
+    /**
+     * Get the number of elements of a specific object class in a given domain
+     * @param domain domain name
+     * @param objClass a valid **string** in the type *DssObjClass*
+     * @returns the number of entries for the provided object class and domain
+     */
     async count(domain, objClass) {
-        this.stats.countCall++;
+        this.stats.countCalls++;
         return this.fetcher(`/${objClass}/count?domain=${encodeURIComponent(domain)}`, isDssResponseCount, x => x.result.count);
     }
-    async query(objClass, query = {}) {
-        this.stats.queries++;
-        return this.fetcher(`/${objClass}`, isDssResponseQuery, x => x, query);
+    /**
+     * Perform a Directory Sync Services Query
+     * @param objClass a valid **string** in the type *DssObjClass*
+     * @param query object describing the query to be performed
+     * @returns the response objecct
+     */
+    async query(objClass, query) {
+        this.stats.queryCalls++;
+        return this.fetcher(`/${objClass}`, isDssResponseQuery, x => x, (query) ? query : {});
+    }
+    /**
+     * Statistics getter
+     * @returns runtime statistics for this instance
+     */
+    getDssStats() {
+        return this.stats;
     }
 }
 exports.DirectorySyncService = DirectorySyncService;
