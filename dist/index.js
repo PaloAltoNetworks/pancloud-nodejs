@@ -2,7 +2,15 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 var credentials_1 = require("./credentials");
 exports.Credentials = credentials_1.Credentials;
-exports.EmbeddedCredentials = credentials_1.EmbeddedCredentials;
+var oa2credentials_1 = require("./oa2credentials");
+exports.EmbeddedCredentials = oa2credentials_1.EmbeddedCredentials;
+exports.OA2CodeCredentials = oa2credentials_1.OA2CodeCredentials;
+exports.EnvCredentials = oa2credentials_1.EnvCredentials;
+exports.FileCredentials = oa2credentials_1.FileCredentials;
+var devtokencredentials_1 = require("./devtokencredentials");
+exports.DevTokenCredentials = devtokencredentials_1.DevTokenCredentials;
+var autocredentials_1 = require("./autocredentials");
+exports.autoCredentials = autocredentials_1.autoCredentials;
 var loggingservice_1 = require("./loggingservice");
 exports.LoggingService = loggingservice_1.LoggingService;
 var eventservice_1 = require("./eventservice");

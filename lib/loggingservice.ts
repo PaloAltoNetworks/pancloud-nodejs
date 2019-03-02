@@ -262,6 +262,8 @@ export class LoggingService extends Emitter {
         this.stats.queries++
         let providedLogType = cfg.logType
         delete cfg.logType
+        let providedCallback = cfg.callBack
+        delete cfg.callBack
         let cfgStr = JSON.stringify(cfg)
         let rJson = await this.fetchPostWrap('/queries', cfgStr)
         this.lastResponse = rJson
@@ -272,19 +274,19 @@ export class LoggingService extends Emitter {
             this.stats.records += rJson.result.esResult.hits.hits.length
         }
         if (rJson.queryStatus != "JOB_FAILED") {
-            if (cfg.callBack) {
-                if (cfg.callBack.event) {
-                    if (!this.registerEventListener(cfg.callBack.event)) {
+            if (providedCallback) {
+                if (providedCallback.event) {
+                    if (!this.registerEventListener(providedCallback.event)) {
                         commonLogger.info(this, "Event receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER")
                     }
                 }
-                if (cfg.callBack.pcap) {
-                    if (!this.registerPcapListener(cfg.callBack.pcap)) {
+                if (providedCallback.pcap) {
+                    if (!this.registerPcapListener(providedCallback.pcap)) {
                         commonLogger.info(this, "PCAP receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER")
                     }
                 }
-                if (cfg.callBack.corr) {
-                    if (!this.registerCorrListener(cfg.callBack.corr)) {
+                if (providedCallback.corr) {
+                    if (!this.registerCorrListener(providedCallback.corr)) {
                         commonLogger.info(this, "CORR receiver already registered and duplicates not allowed is set to TRUE", "RECEIVER")
                     }
                 }
