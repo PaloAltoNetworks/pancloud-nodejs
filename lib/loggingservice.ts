@@ -443,7 +443,7 @@ export class LoggingService extends Emitter {
      */
     public deleteQuery(queryId: string): Promise<void> {
         this.stats.deletes++
-        return this.voidXOperation(`/queries/${queryId}`, undefined, "DELETE")
+        return this.voidXOperation(`/queries/${queryId}`, undefined, 'DELETE')
     }
 
     /**

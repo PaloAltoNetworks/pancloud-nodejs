@@ -25,9 +25,7 @@
     "url": "https://github.com/PaloAltoNetworks/pancloud-nodejs/issues"
   },
   "homepage": "https://github.com/PaloAltoNetworks/pancloud-nodejs#readme",
-  "dependencies": {
-    "node-fetch": "^2.3.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node-fetch": "^2.1.4"
   }

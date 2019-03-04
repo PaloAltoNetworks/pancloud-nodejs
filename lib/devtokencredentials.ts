@@ -1,5 +1,5 @@
 import { env } from 'process'
-import fetch from 'node-fetch'
+import { fetch } from './fetch'
 import { Credentials, CredentialsOptions } from './credentials'
 import { retrier } from './common'
 import { PanCloudError } from './error'

@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const process_1 = require("process");
-const node_fetch_1 = require("node-fetch");
+const fetch_1 = require("./fetch");
 const credentials_1 = require("./credentials");
 const common_1 = require("./common");
 const error_1 = require("./error");
@@ -31,7 +31,7 @@ class DevTokenCredentials extends credentials_1.Credentials {
         return new DevTokenCredentials(developerToken, finalTokenProvider, accessToken);
     }
     static async devTokenConsume(entrypoint, token) {
-        let res = await common_1.retrier(DevTokenCredentials, undefined, undefined, node_fetch_1.default, entrypoint, {
+        let res = await common_1.retrier(DevTokenCredentials, undefined, undefined, fetch_1.fetch, entrypoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

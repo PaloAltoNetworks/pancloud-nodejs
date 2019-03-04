@@ -1,3 +1,8 @@
+/**
+ * Implements the abstract coreClass that implements common methods for higher-end classes like Event Service
+ * and Logging Service
+ */
+import { HttpMethod } from './fetch';
 import { Credentials } from './credentials';
 import { LogLevel } from './common';
 /**
@@ -104,5 +109,5 @@ export declare class CoreClass {
     /**
      * Convenience method that abstracts a DELETE operation to the Application Framework
      */
-    protected voidXOperation(path?: string, payload?: string, method?: string): Promise<void>;
+    protected voidXOperation(path?: string, payload?: string, method?: HttpMethod): Promise<void>;
 }
