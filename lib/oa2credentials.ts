@@ -1,13 +1,12 @@
 /**
  * The Application Framework Identity Provider URL entry point
  */
-import fetch from 'node-fetch';
+import { fetch } from './fetch'
 import { commonLogger, retrier } from './common'
 import { PanCloudError } from './error'
 import { Credentials, CredentialsOptions } from './credentials'
 import { env } from 'process'
 import { readFileSync } from 'fs'
-import { type } from 'os';
 
 const IDP_TOKEN_URL: string = 'https://api.paloaltonetworks.com/api/oauth2/RequestToken'
 const IDP_REVOKE_URL: string = 'https://api.paloaltonetworks.com/api/oauth2/RevokeToken'

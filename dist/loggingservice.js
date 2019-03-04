@@ -271,7 +271,7 @@ class LoggingService extends emitter_1.Emitter {
      */
     deleteQuery(queryId) {
         this.stats.deletes++;
-        return this.voidXOperation(`/queries/${queryId}`, undefined, "DELETE");
+        return this.voidXOperation(`/queries/${queryId}`, undefined, 'DELETE');
     }
     /**
      * Use this method to write data to the Logging service

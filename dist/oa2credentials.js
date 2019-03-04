@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 /**
  * The Application Framework Identity Provider URL entry point
  */
-const node_fetch_1 = require("node-fetch");
+const fetch_1 = require("./fetch");
 const common_1 = require("./common");
 const error_1 = require("./error");
 const credentials_1 = require("./credentials");
@@ -38,7 +38,7 @@ class OA2BaseCredentials extends credentials_1.Credentials {
      * @returns a new set of tokens
      */
     static async refreshTokens(clientId, clientSecret, refreshToken, idpTokenUrl) {
-        let res = await common_1.retrier(EmbeddedCredentials, undefined, undefined, node_fetch_1.default, idpTokenUrl, {
+        let res = await common_1.retrier(EmbeddedCredentials, undefined, undefined, fetch_1.fetch, idpTokenUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -88,7 +88,7 @@ class OA2BaseCredentials extends credentials_1.Credentials {
         if (!this.refreshToken) {
             throw new error_1.PanCloudError(EmbeddedCredentials, 'CONFIG', `Not valid refresh token for revoke op: ${this.refreshToken}`);
         }
-        let res = await node_fetch_1.default(IDP_REVOKE_URL, {
+        let res = await fetch_1.fetch(IDP_REVOKE_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -179,7 +179,7 @@ class OA2CodeCredentials extends OA2BaseCredentials {
      * @returns a new set of tokens
      */
     static async fetchTokens(clientId, clientSecret, code, idpTokenUrl, redirectUri) {
-        let res = await common_1.retrier(EmbeddedCredentials, undefined, undefined, node_fetch_1.default, idpTokenUrl, {
+        let res = await common_1.retrier(EmbeddedCredentials, undefined, undefined, fetch_1.fetch, idpTokenUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

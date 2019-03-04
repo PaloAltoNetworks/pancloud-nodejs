@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
  * Implements the abstract coreClass that implements common methods for higher-end classes like Event Service
  * and Logging Service
  */
-const fetch = require("node-fetch");
+const fetch_1 = require("./fetch");
 const error_1 = require("./error");
 const common_1 = require("./common");
 /**
@@ -76,7 +76,7 @@ class CoreClass {
             rInit.body = body;
         }
         common_1.commonLogger.debug(this, `fetch operation to ${url}`, method, body);
-        let r = await common_1.retrier(this, this.retrierCount, this.retrierDelay, fetch.default, url, rInit);
+        let r = await common_1.retrier(this, this.retrierCount, this.retrierDelay, fetch_1.fetch, url, rInit);
         let rText = await r.text();
         if (rText.length == 0) {
             common_1.commonLogger.debug(this, 'fetch response is null');
@@ -129,7 +129,7 @@ class CoreClass {
     /**
      * Convenience method that abstracts a DELETE operation to the Application Framework
      */
-    async voidXOperation(path, payload, method = "POST") {
+    async voidXOperation(path, payload, method = 'POST') {
         let r_json = await this.fetchXWrap(method, path, payload);
         this.lastResponse = r_json;
     }

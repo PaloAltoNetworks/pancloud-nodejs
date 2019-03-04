@@ -1,5 +1,4 @@
-import { EmbeddedCredentials, EventService, EmitterInterface, L2correlation, EsFilterBuilderCfg } from 'pancloud-nodejs'
-import { c_id, c_secret, r_token, a_token } from './secrets'
+import { autoCredentials, EventService, EmitterInterface, L2correlation, EsFilterBuilderCfg } from 'pancloud-nodejs'
 
 const entryPoint = "https://api.us.paloaltonetworks.com"
 
@@ -22,12 +21,7 @@ let builderCfg: EsFilterBuilderCfg = {
  * Use the enventservice.js launcher to call this main() function
  */
 export async function main(): Promise<void> {
-    let c = await EmbeddedCredentials.factory({
-        clientId: c_id,
-        clientSecret: c_secret,
-        refreshToken: r_token,
-        accessToken: a_token
-    })
+    let c = await autoCredentials()
     let es = await EventService.factory(entryPoint, {
         credential: c,
         fetchTimeout: 45000,

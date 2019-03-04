@@ -1,15 +1,9 @@
-import { EmbeddedCredentials, DirectorySyncService, LogLevel } from 'pancloud-nodejs'
-import { c_id, c_secret, r_token, a_token } from './secrets'
+import { autoCredentials, DirectorySyncService, LogLevel } from 'pancloud-nodejs'
 
 const entryPoint = "https://api.us.paloaltonetworks.com"
 
 export async function main(): Promise<void> {
-    let c = await EmbeddedCredentials.factory({
-        clientId: c_id,
-        clientSecret: c_secret,
-        refreshToken: r_token,
-        accessToken: a_token
-    })
+    let c = await autoCredentials()
     let dss = await DirectorySyncService.factory(entryPoint, {
         credential: c
         // level: logLevel.DEBUG

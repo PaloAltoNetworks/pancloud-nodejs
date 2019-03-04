@@ -2,7 +2,7 @@
  * Implements the abstract coreClass that implements common methods for higher-end classes like Event Service
  * and Logging Service
  */
-import * as fetch from 'node-fetch'
+import { fetch, FetchOptions, HttpMethod } from './fetch'
 import { Credentials } from './credentials'
 import { ApplicationFrameworkError, PanCloudError } from './error'
 import { commonLogger, LogLevel, retrier } from './common';
@@ -125,11 +125,11 @@ export class CoreClass {
         }
     }
 
-    private async fetchXWrap(method: string, path?: string, body?: string): Promise<any> {
+    private async fetchXWrap(method: HttpMethod, path?: string, body?: string): Promise<any> {
         let url = this.baseUrl + ((path) ? path : '')
         this.stats.apiTransactions++
         await this.checkAutoRefresh()
-        let rInit: fetch.RequestInit = {
+        let rInit: FetchOptions = {
             headers: this.fetchHeaders,
             method: method
         }
@@ -140,7 +140,7 @@ export class CoreClass {
             rInit.body = body
         }
         commonLogger.debug(this, `fetch operation to ${url}`, method, body)
-        let r = await retrier(this, this.retrierCount, this.retrierDelay, fetch.default, url, rInit)
+        let r = await retrier(this, this.retrierCount, this.retrierDelay, fetch, url, rInit)
         let rText = await r.text()
         if (rText.length == 0) {
             commonLogger.debug(this, 'fetch response is null')
@@ -197,7 +197,7 @@ export class CoreClass {
     /**
      * Convenience method that abstracts a DELETE operation to the Application Framework
      */
-    protected async voidXOperation(path?: string, payload?: string, method = "POST"): Promise<void> {
+    protected async voidXOperation(path?: string, payload?: string, method: HttpMethod = 'POST'): Promise<void> {
         let r_json = await this.fetchXWrap(method, path, payload);
         this.lastResponse = r_json
     }
