@@ -2,7 +2,7 @@
  * Provides common resources for other modules in the pancloud SDK
  */
 
-import { SdkErr } from './error'
+import { SdkErr, PanCloudError } from './error'
 
 /**
  * A pancloud class must provide a className property that will be used to format its log messages
@@ -204,4 +204,21 @@ export async function retrier<T, O>(source: PancloudClass, n = 3, delay = 100, h
         a--
     }
     throw (lastError) ? lastError : new Error('reties exhausted')
+}
+
+export function expTokenExtractor(source: PancloudClass, token: string): number {
+    let parts = token.split('.')
+    if (parts.length != 3) {
+        throw new PanCloudError(source, 'PARSER', 'Not a valid JWT token format')
+    }
+    let expAttribute: any
+    try {
+        expAttribute = JSON.parse(Buffer.from(parts[1], 'base64').toString()).exp
+    } catch {
+        throw new PanCloudError(source, 'PARSER', 'Not a valid JWT token format')
+    }
+    if(typeof expAttribute == 'number') {
+        return expAttribute
+    }
+    throw new PanCloudError(source, 'PARSER', 'JWT token does not have a valid "exp" field')
 }

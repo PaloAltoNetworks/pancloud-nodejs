@@ -21,9 +21,7 @@ export declare class DevTokenCredentials extends Credentials {
     private developerToken;
     private developerTokenProvider;
     static className: string;
-    constructor(devToken: string, devTokenProvider: string, accesToken: string);
-    static factory(ops?: DevTokenCredentialsOptions): Promise<Credentials>;
+    constructor(ops?: DevTokenCredentialsOptions);
     private static devTokenConsume;
-    refreshAccessToken(): Promise<void>;
-    revokeToken(): Promise<void>;
+    retrieveAccessToken(): Promise<void>;
 }

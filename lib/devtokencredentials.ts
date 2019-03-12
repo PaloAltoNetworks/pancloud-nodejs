@@ -1,7 +1,7 @@
 import { env } from 'process'
-import { fetch } from './fetch'
+import { fetch } from './fetch'
 import { Credentials, CredentialsOptions } from './credentials'
-import { retrier } from './common'
+import { retrier, expTokenExtractor } from './common'
 import { PanCloudError } from './error'
 
 const ENV_DEVELOPER_TOKEN = 'PAN_DEVELOPER_TOKEN'
@@ -41,13 +41,8 @@ export class DevTokenCredentials extends Credentials {
     private developerTokenProvider: string
     static className = 'DevTokenCredentials'
 
-    constructor(devToken: string, devTokenProvider: string, accesToken: string) {
-        super(accesToken)
-        this.developerToken = devToken
-        this.developerTokenProvider = devTokenProvider
-    }
-
-    public static async factory(ops?: DevTokenCredentialsOptions): Promise<Credentials> {
+    constructor(ops?: DevTokenCredentialsOptions) {
+        super((ops) ? ops.guardTime : undefined)
         let envDevToken = (ops && ops.envDevToken) ? ops.envDevToken : ENV_DEVELOPER_TOKEN
         let envDevTokenProvider = (ops && ops.envDevTokenProvider) ? ops.envDevTokenProvider : ENV_DEVELOPER_TOKEN_PROVIDER
         let developerToken = (ops && ops.developerToken) ? ops.developerToken : env[envDevToken]
@@ -57,8 +52,8 @@ export class DevTokenCredentials extends Credentials {
         }
         let tokenProvider = (ops && ops.developerTokenProvider) ? ops.developerTokenProvider : env[envDevTokenProvider]
         let finalTokenProvider = tokenProvider ? tokenProvider : DEV_TOKEN_PROVIDER
-        let accessToken = await DevTokenCredentials.devTokenConsume(finalTokenProvider, developerToken)
-        return new DevTokenCredentials(developerToken, finalTokenProvider, accessToken)
+        this.developerToken = developerToken
+        this.developerTokenProvider = finalTokenProvider
     }
 
     private static async devTokenConsume(entrypoint: string, token: string): Promise<string> {
@@ -88,10 +83,8 @@ export class DevTokenCredentials extends Credentials {
             `non valid access_token property found in the response received from the Developer Token Provider at ${entrypoint}`)
     }
 
-    public async refreshAccessToken(): Promise<void> {
-        this.setAccessToken(await DevTokenCredentials.devTokenConsume(this.developerTokenProvider, this.developerToken))
-    }
-
-    public async revokeToken(): Promise<void> {
+    public async retrieveAccessToken(): Promise<void> {
+        let accessToken = await DevTokenCredentials.devTokenConsume(this.developerTokenProvider, this.developerToken)
+        this.setAccessToken(accessToken, expTokenExtractor(this, accessToken))
     }
 }

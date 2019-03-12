@@ -11,6 +11,7 @@ export interface CredentialsOptions {
      * If not provided then the constant **IDP_TOKEN_URL** will be used instead
      */
     idpTokenUrl?: string;
+    guardTime?: number;
 }
 /**
  * Base abstract CredentialS class
@@ -19,17 +20,14 @@ export declare abstract class Credentials implements PancloudClass {
     private validUntil;
     private accessToken;
     className: string;
-    constructor(accessToken: string, expiresIn?: number);
-    private static validUntil;
-    protected setAccessToken(accessToken: string, expiresIn?: number): void;
+    private guardTime;
+    constructor(guardTime?: number);
+    protected setAccessToken(accessToken: string, validUntil: number): void;
     /**
      * Returns the current access token
      */
-    getAccessToken(): string;
-    /**
-     * Returns the current access token expiration time
-     */
-    getExpiration(): number;
+    getAccessToken(): Promise<string>;
+    getExpiration(): Promise<number>;
     /**
      * Checks the access token expiration time and automaticaly refreshes it if going to expire
      * inside the next 5 minutes
@@ -38,9 +36,5 @@ export declare abstract class Credentials implements PancloudClass {
     /**
      * Triggers an access token refresh request
      */
-    abstract refreshAccessToken(): Promise<void>;
-    /**
-     * Triggers a refresh token revocation request
-     */
-    abstract revokeToken(): Promise<void>;
+    abstract retrieveAccessToken(): Promise<void>;
 }

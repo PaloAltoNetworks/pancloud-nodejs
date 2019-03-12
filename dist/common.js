@@ -3,6 +3,7 @@
  * Provides common resources for other modules in the pancloud SDK
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+const error_1 = require("./error");
 var LogLevel;
 (function (LogLevel) {
     LogLevel[LogLevel["DEBUG"] = 0] = "DEBUG";
@@ -164,3 +165,21 @@ async function retrier(source, n = 3, delay = 100, handler, ...params) {
     throw (lastError) ? lastError : new Error('reties exhausted');
 }
 exports.retrier = retrier;
+function expTokenExtractor(source, token) {
+    let parts = token.split('.');
+    if (parts.length != 3) {
+        throw new error_1.PanCloudError(source, 'PARSER', 'Not a valid JWT token format');
+    }
+    let expAttribute;
+    try {
+        expAttribute = JSON.parse(Buffer.from(parts[1], 'base64').toString()).exp;
+    }
+    catch (_a) {
+        throw new error_1.PanCloudError(source, 'PARSER', 'Not a valid JWT token format');
+    }
+    if (typeof expAttribute == 'number') {
+        return expAttribute;
+    }
+    throw new error_1.PanCloudError(source, 'PARSER', 'JWT token does not have a valid "exp" field');
+}
+exports.expTokenExtractor = expTokenExtractor;

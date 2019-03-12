@@ -4,52 +4,36 @@
  * bound together.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-const error_1 = require("./error");
 const common_1 = require("./common");
+const error_1 = require("./error");
 /**
  * Base abstract CredentialS class
  */
 class Credentials {
-    constructor(accessToken, expiresIn) {
-        this.accessToken = accessToken;
-        this.validUntil = Credentials.validUntil(accessToken, expiresIn);
+    constructor(guardTime) {
+        this.guardTime = (guardTime) ? guardTime : 300;
         this.className = "Credentials";
-    }
-    static validUntil(accessToken, expiresIn) {
-        if (expiresIn) {
-            return Math.floor(Date.now() / 1000) + expiresIn;
+        if (this.guardTime > 3300) {
+            throw new error_1.PanCloudError(this, 'CONFIG', `Property 'accTokenGuardTime' must be, at max 3300 seconds (${this.guardTime})`);
         }
-        let exp = 0;
-        if (accessToken) {
-            let jwtParts = accessToken.split('.');
-            if (jwtParts.length != 3) {
-                throw new error_1.PanCloudError({ className: 'Credentials' }, 'CONFIG', 'invalid JWT Token');
-            }
-            let claim;
-            try {
-                claim = JSON.parse(Buffer.from(jwtParts[1], 'base64').toString());
-                exp = Number.parseInt(claim.exp, 10);
-            }
-            catch (e) {
-                throw error_1.PanCloudError.fromError({ className: 'Credentials' }, e);
-            }
-        }
-        return exp;
     }
-    setAccessToken(accessToken, expiresIn) {
+    setAccessToken(accessToken, validUntil) {
         this.accessToken = accessToken;
-        this.validUntil = Credentials.validUntil(accessToken, expiresIn);
+        this.validUntil = validUntil;
     }
     /**
      * Returns the current access token
      */
-    getAccessToken() {
+    async getAccessToken() {
+        if (!this.accessToken) {
+            await this.retrieveAccessToken();
+        }
         return this.accessToken;
     }
-    /**
-     * Returns the current access token expiration time
-     */
-    getExpiration() {
+    async getExpiration() {
+        if (!this.accessToken) {
+            await this.retrieveAccessToken();
+        }
         return this.validUntil;
     }
     /**
@@ -57,14 +41,17 @@ class Credentials {
      * inside the next 5 minutes
      */
     async autoRefresh() {
-        if (Date.now() + 300000 > this.validUntil * 1000) {
+        if (!this.accessToken) {
+            await this.retrieveAccessToken();
+        }
+        if (Date.now() + this.guardTime * 1000 > this.validUntil * 1000) {
             try {
-                common_1.commonLogger.info(this, 'Attempt to auto-refresh the access token');
-                await this.refreshAccessToken();
+                common_1.commonLogger.info(this, 'Cached access token about to expire. Requesting a new one.');
+                await this.retrieveAccessToken();
                 return true;
             }
             catch (_a) {
-                common_1.commonLogger.info(this, 'Failed to auto-refresh the access token');
+                common_1.commonLogger.info(this, 'Failed to get a new access token');
             }
         }
         return false;

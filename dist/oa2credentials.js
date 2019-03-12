@@ -23,7 +23,7 @@ function isIdpErrorResponse(obj) {
 }
 class OA2BaseCredentials extends credentials_1.Credentials {
     constructor(clientId, clientSecret, accessToken, refreshToken, idpTokenUrl, expiresIn) {
-        super(accessToken, expiresIn);
+        super(expiresIn);
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.refreshToken = refreshToken;

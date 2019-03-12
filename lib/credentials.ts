@@ -3,8 +3,8 @@
  * bound together.
  */
 
-import { PanCloudError } from './error'
 import { PancloudClass, commonLogger } from './common'
+import { PanCloudError } from './error';
 
 /**
  * Configuration options to instantiate the credentials class. Find usage in the {@link Credentials} constructor
@@ -14,6 +14,7 @@ export interface CredentialsOptions {
      * If not provided then the constant **IDP_TOKEN_URL** will be used instead
      */
     idpTokenUrl?: string,
+    guardTime?: number
 }
 
 /**
@@ -23,48 +24,35 @@ export abstract class Credentials implements PancloudClass {
     private validUntil: number
     private accessToken: string
     public className: string
+    private guardTime: number
 
-    constructor(accessToken: string, expiresIn?: number) {
-        this.accessToken = accessToken
-        this.validUntil = Credentials.validUntil(accessToken, expiresIn)
+    constructor(guardTime?: number) {
+        this.guardTime = (guardTime) ? guardTime : 300
         this.className = "Credentials"
+        if (this.guardTime > 3300) {
+            throw new PanCloudError(this, 'CONFIG', `Property 'accTokenGuardTime' must be, at max 3300 seconds (${this.guardTime})`)
+        }
     }
 
-    private static validUntil(accessToken?: string, expiresIn?: number): number {
-        if (expiresIn) {
-            return Math.floor(Date.now() / 1000) + expiresIn
-        }
-        let exp = 0
-        if (accessToken) {
-            let jwtParts = accessToken.split('.')
-            if (jwtParts.length != 3) { throw new PanCloudError({ className: 'Credentials' }, 'CONFIG', 'invalid JWT Token') }
-            let claim: any
-            try {
-                claim = JSON.parse(Buffer.from(jwtParts[1], 'base64').toString())
-                exp = Number.parseInt(claim.exp, 10)
-            } catch (e) {
-                throw PanCloudError.fromError({ className: 'Credentials' }, e)
-            }
-        }
-        return exp
-    }
-
-    protected setAccessToken(accessToken: string, expiresIn?: number) {
+    protected setAccessToken(accessToken: string, validUntil: number) {
         this.accessToken = accessToken
-        this.validUntil = Credentials.validUntil(accessToken, expiresIn)
+        this.validUntil = validUntil
     }
 
     /**
      * Returns the current access token
      */
-    public getAccessToken(): string {
+    public async getAccessToken(): Promise<string> {
+        if (!this.accessToken) {
+            await this.retrieveAccessToken()
+        }
         return this.accessToken
     }
 
-    /**
-     * Returns the current access token expiration time
-     */
-    public getExpiration(): number {
+    public async getExpiration(): Promise<number> {
+        if (!this.accessToken) {
+            await this.retrieveAccessToken()
+        }
         return this.validUntil
     }
 
@@ -73,13 +61,16 @@ export abstract class Credentials implements PancloudClass {
      * inside the next 5 minutes
      */
     public async autoRefresh(): Promise<boolean> {
-        if (Date.now() + 300000 > this.validUntil * 1000) {
+        if (!this.accessToken) {
+            await this.retrieveAccessToken()
+        }
+        if (Date.now() + this.guardTime * 1000 > this.validUntil * 1000) {
             try {
-                commonLogger.info(this, 'Attempt to auto-refresh the access token')
-                await this.refreshAccessToken()
+                commonLogger.info(this, 'Cached access token about to expire. Requesting a new one.')
+                await this.retrieveAccessToken()
                 return true
             } catch {
-                commonLogger.info(this, 'Failed to auto-refresh the access token')
+                commonLogger.info(this, 'Failed to get a new access token')
             }
         }
         return false
@@ -88,10 +79,5 @@ export abstract class Credentials implements PancloudClass {
     /**
      * Triggers an access token refresh request
      */
-    public async abstract refreshAccessToken(): Promise<void>
-
-    /**
-     * Triggers a refresh token revocation request
-     */
-    public async abstract revokeToken(): Promise<void>
+    public async abstract retrieveAccessToken(): Promise<void>
 }

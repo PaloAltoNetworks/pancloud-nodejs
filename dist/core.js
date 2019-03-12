@@ -23,26 +23,19 @@ class CoreClass {
         if (ops.level != undefined && ops.level != common_1.LogLevel.INFO) {
             common_1.commonLogger.level = ops.level;
         }
-        if (ops.autoRefresh == undefined) {
-            this.autoR = true;
-        }
-        else {
-            this.autoR = ops.autoRefresh;
-        }
         this.retrierCount = ops.retrierCount;
         this.retrierDelay = ops.retrierDelay;
         this.fetchTimeout = ops.fetchTimeout;
         this.stats = {
             apiTransactions: 0
         };
-        this.setFetchHeaders();
     }
     /**
      * Prepares the HTTP headers. Mainly used to keep the Autorization header (bearer access-token)
      */
-    setFetchHeaders() {
+    async setFetchHeaders() {
         this.fetchHeaders = {
-            'Authorization': 'Bearer ' + this.cred.getAccessToken(),
+            'Authorization': 'Bearer ' + await this.cred.getAccessToken(),
             'Content-Type': 'application/json'
         };
         common_1.commonLogger.info(this, 'updated authorization header');
@@ -51,20 +44,21 @@ class CoreClass {
      * Triggers the credential object access-token refresh procedure and updates the HTTP headers
      */
     async refresh() {
-        await this.cred.refreshAccessToken();
-        this.setFetchHeaders();
+        await this.cred.retrieveAccessToken();
+        await this.setFetchHeaders();
     }
     async checkAutoRefresh() {
-        if (this.autoR) {
-            if (await this.cred.autoRefresh()) {
-                this.setFetchHeaders();
-            }
+        if (await this.cred.autoRefresh()) {
+            await this.setFetchHeaders();
         }
     }
     async fetchXWrap(method, path, body) {
         let url = this.baseUrl + ((path) ? path : '');
         this.stats.apiTransactions++;
         await this.checkAutoRefresh();
+        if (!this.fetchHeaders) {
+            await this.setFetchHeaders();
+        }
         let rInit = {
             headers: this.fetchHeaders,
             method: method

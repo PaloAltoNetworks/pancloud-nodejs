@@ -13,12 +13,8 @@ function isApexResponse(obj) {
         obj.access_token && typeof obj.access_token == 'string';
 }
 class DevTokenCredentials extends credentials_1.Credentials {
-    constructor(devToken, devTokenProvider, accesToken) {
-        super(accesToken);
-        this.developerToken = devToken;
-        this.developerTokenProvider = devTokenProvider;
-    }
-    static async factory(ops) {
+    constructor(ops) {
+        super((ops) ? ops.guardTime : undefined);
         let envDevToken = (ops && ops.envDevToken) ? ops.envDevToken : ENV_DEVELOPER_TOKEN;
         let envDevTokenProvider = (ops && ops.envDevTokenProvider) ? ops.envDevTokenProvider : ENV_DEVELOPER_TOKEN_PROVIDER;
         let developerToken = (ops && ops.developerToken) ? ops.developerToken : process_1.env[envDevToken];
@@ -27,8 +23,8 @@ class DevTokenCredentials extends credentials_1.Credentials {
         }
         let tokenProvider = (ops && ops.developerTokenProvider) ? ops.developerTokenProvider : process_1.env[envDevTokenProvider];
         let finalTokenProvider = tokenProvider ? tokenProvider : DEV_TOKEN_PROVIDER;
-        let accessToken = await DevTokenCredentials.devTokenConsume(finalTokenProvider, developerToken);
-        return new DevTokenCredentials(developerToken, finalTokenProvider, accessToken);
+        this.developerToken = developerToken;
+        this.developerTokenProvider = finalTokenProvider;
     }
     static async devTokenConsume(entrypoint, token) {
         let res = await common_1.retrier(DevTokenCredentials, undefined, undefined, fetch_1.fetch, entrypoint, {
@@ -54,10 +50,9 @@ class DevTokenCredentials extends credentials_1.Credentials {
         }
         throw new error_1.PanCloudError(DevTokenCredentials, 'PARSER', `non valid access_token property found in the response received from the Developer Token Provider at ${entrypoint}`);
     }
-    async refreshAccessToken() {
-        this.setAccessToken(await DevTokenCredentials.devTokenConsume(this.developerTokenProvider, this.developerToken));
-    }
-    async revokeToken() {
+    async retrieveAccessToken() {
+        let accessToken = await DevTokenCredentials.devTokenConsume(this.developerTokenProvider, this.developerToken);
+        this.setAccessToken(accessToken, common_1.expTokenExtractor(this, accessToken));
     }
 }
 DevTokenCredentials.className = 'DevTokenCredentials';
