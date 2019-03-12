@@ -9,3 +9,4 @@ export { LogLevel, retrier, commonLogger } from './common';
 export { isSdkError, PanCloudError } from './error';
 export { Util } from './util';
 export { CortexCredentialProvider, CredentialProviderOptions, CredentialsItem, RefreshResult, defaultCredentialsFactory, isCredentialItem } from './credentialprovider';
+export { fsCredentialsFactory } from './fscredentialprovider';

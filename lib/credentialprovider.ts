@@ -166,9 +166,13 @@ export abstract class CortexCredentialProvider {
     private async restoreState(): Promise<void> {
         this.credentials = await this.loadCredentialsDb()
         this.credentialsObject = {}
-        this.credentialsRefreshToken = {}
+        if (!this.credentialsRefreshToken) {
+            this.credentialsRefreshToken = {}
+        }
         for (let datalakeId in this.credentials) {
-            this.credentialsRefreshToken[datalakeId] = await this.retrieveCortexRefreshToken(datalakeId)
+            if (!this.credentialsRefreshToken[datalakeId]) {
+                this.credentialsRefreshToken[datalakeId] = await this.retrieveCortexRefreshToken(datalakeId)
+            }
             this.credentialsObject[datalakeId] = await this.credentialsObjectFactory(datalakeId, this.accTokenGuardTime)
         }
         commonLogger.info(this, `Successfully restored ${Object.keys(this.credentials).length} items`)
@@ -214,6 +218,9 @@ export abstract class CortexCredentialProvider {
     }
 
     async registerCodeDatalake(datalakeId: string, code: string, redirectUri: string): Promise<Credentials> {
+        if (!this.credentials) {
+            await this.restoreState()
+        }
         let idpResponse = await this.fetchTokens(code, redirectUri)
         if (!idpResponse.refresh_token) {
             throw new PanCloudError(this, 'IDENTITY', 'Identity response does not include a refresh token')
@@ -239,7 +246,10 @@ export abstract class CortexCredentialProvider {
         return this.settleCredObject(datalakeId, idpResponse.access_token, idpResponse.validUntil)
     }
 
-    registerManualDatalake(datalakeId: string, refreshToken: string): Promise<Credentials> {
+    async registerManualDatalake(datalakeId: string, refreshToken: string): Promise<Credentials> {
+        if (!this.credentials) {
+            await this.restoreState()
+        }
         return this.issueWithRefreshToken(datalakeId, refreshToken, true)
     }
 

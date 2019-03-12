@@ -12,3 +12,4 @@ export {
     CortexCredentialProvider, CredentialProviderOptions,
     CredentialsItem, RefreshResult, defaultCredentialsFactory, isCredentialItem
 } from './credentialprovider'
+export { fsCredentialsFactory } from './fscredentialprovider'

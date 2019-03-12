@@ -11,13 +11,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { commonLogger } from './common'
+import { commonLogger, PancloudClass } from './common'
 import { PanCloudError } from './error'
 import { Credentials } from './credentials'
 import { env } from 'process'
 import { CortexCredentialProvider, CredentialProviderOptions, CredentialsItem, isCredentialItem } from './credentialprovider'
 import { createCipheriv, createDecipheriv, createHash } from 'crypto'
-import { promises as fspromises, constants as fsconstants } from 'fs'
+import * as fs from 'fs'
 
 interface ConfigFile {
     credentialItems: { [dlid: string]: CredentialsItem },
@@ -33,17 +33,17 @@ function isConfigFile(obj: any): obj is ConfigFile {
 }
 
 class FsCredProvider extends CortexCredentialProvider {
-    key: string
-    iv: string
-    configFileName: string
+    private key: ArrayBufferView
+    private iv: ArrayBufferView
+    private configFileName: string
 
     constructor(ops: CredentialProviderOptions &
     { clientId: string, clientSecret: string } &
-    { key: string, iv: string, configFileName: string }) {
+    { key: ArrayBufferView, iv: ArrayBufferView, configFileName: string }) {
         super(ops)
         this.key = ops.key
         this.iv = ops.iv
-        this.configFileName = this.configFileName
+        this.configFileName = ops.configFileName
     }
 
     private async fullSync(): Promise<void> {
@@ -52,15 +52,11 @@ class FsCredProvider extends CortexCredentialProvider {
             refreshTokens: {}
         }
         Object.entries(this.credentialsRefreshToken).forEach(v => {
-            let aes = createCipheriv('aes-128-ccm', this.key, this.iv)
-            aes.update(v[1])
-            configFile.refreshTokens[v[0]] = aes.final('base64')
+            let aes = createCipheriv('aes128', this.key, this.iv)
+            let payload = Buffer.concat([aes.update(Buffer.from(v[1], 'utf8')), aes.final()]).toString('base64')
+            configFile.refreshTokens[v[0]] = payload
         })
-        try {
-            await fspromises.writeFile(this.configFileName, JSON.stringify(configFile))
-        } catch (e) {
-            throw PanCloudError.fromError(this, e)
-        }
+        await promifyFs(this, fs.writeFile, this.configFileName, JSON.stringify(configFile, undefined, ' '))
     }
 
     protected createCortexRefreshToken(datalakeId: string, refreshToken: string): Promise<void> {
@@ -81,9 +77,9 @@ class FsCredProvider extends CortexCredentialProvider {
         if (!cryptedRefreshToken) {
             throw new PanCloudError(this, 'CONFIG', `Refresh token for datalake ${datalakeId} not found in configuration file ${this.configFileName}`)
         }
-        let decr = createDecipheriv('aes-128-ccm', this.key, this.iv)
-        decr.update(Buffer.from(cryptedRefreshToken, 'base64'))
-        return decr.final('utf8')
+        let decr = createDecipheriv('aes128', this.key, this.iv)
+        let refreshToken = Buffer.concat([decr.update(Buffer.from(cryptedRefreshToken, 'base64')), decr.final()]).toString('utf8')
+        return refreshToken
     }
 
     protected createCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem): Promise<void> {
@@ -101,7 +97,7 @@ class FsCredProvider extends CortexCredentialProvider {
     private async loadConfigFile(): Promise<ConfigFile> {
         let jsonConfig: any
         try {
-            let configFile = await fspromises.readFile(this.configFileName)
+            let configFile = await promifyFs<Buffer>(this, fs.readFile, this.configFileName)
             jsonConfig = JSON.parse(configFile.toString('utf8'))
         } catch (e) {
             throw PanCloudError.fromError(this, e)
@@ -126,7 +122,7 @@ class FsCredProvider extends CortexCredentialProvider {
 const ENV_PREFIX = 'PAN'
 const CONFIG_FILE = 'pancloud_config.js'
 
-export async function fsCredProvider(ops: CredentialProviderOptions &
+export async function fsCredentialsFactory(ops: CredentialProviderOptions &
 { envPrefix?: string, clientId?: string, clientSecret?: string, secret: string }): Promise<FsCredProvider> {
     let { key, iv } = passIvGenerator(ops.secret)
     let ePrefix = (ops && ops.envPrefix) ? ops.envPrefix : ENV_PREFIX
@@ -146,17 +142,17 @@ export async function fsCredProvider(ops: CredentialProviderOptions &
     commonLogger.info({ className: "defaultCredentialsFactory" }, `Got 'client_secret' from environment variable ${envClientSecret}`)
     let configFileName = `${ePrefix}_${CONFIG_FILE}`
     try {
-        await fspromises.stat(configFileName)
+        await promifyFs<fs.Stats>(this, fs.stat, configFileName)
     } catch (e) {
         commonLogger.info({ className: 'fsCredProvider' }, `${configFileName} does not exist. Creating it`)
         let blankConfig: ConfigFile = {
             credentialItems: {},
             refreshTokens: {}
         }
-        await fspromises.writeFile(configFileName, JSON.stringify(blankConfig))
+        await promifyFs<void>(this, fs.writeFile, configFileName, JSON.stringify(blankConfig))
     }
     try {
-        await fspromises.access(configFileName, fsconstants.W_OK | fsconstants.R_OK)
+        await promifyFs(this, fs.access, configFileName, fs.constants.W_OK | fs.constants.R_OK)
     } catch (e) {
         throw new PanCloudError({ className: 'fsCredProvider' }, 'CONFIG', `Invalid permissions in configuration file ${configFileName}`)
     }
@@ -170,10 +166,23 @@ export async function fsCredProvider(ops: CredentialProviderOptions &
     })
 }
 
-function passIvGenerator(secret: string): { key: string, iv: string } {
+function passIvGenerator(secret: string): { key: ArrayBufferView, iv: ArrayBufferView } {
     let code = createHash('sha1').update(secret).digest()
+    let key = new DataView(code.buffer.slice(0, 16))
+    let iv = new DataView(code.buffer.slice(4, 20))
     return {
-        key: code.toString('utf8', 0, 16),
-        iv: code.toString('utf8', 16, 32)
+        key: key,
+        iv: iv
     }
+}
+
+function promifyFs<T>(source: PancloudClass, f: (...args: any[]) => void, ...params: any[]): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        f(...params, (e: Error | undefined, data?: T) => {
+            if (e) {
+                reject(PanCloudError.fromError(source, e))
+            }
+            resolve(data)
+        })
+    })
 }

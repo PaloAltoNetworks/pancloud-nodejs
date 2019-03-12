@@ -1,15 +1,15 @@
 import { Credentials } from './credentials';
 import { CortexCredentialProvider, CredentialProviderOptions, CredentialsItem } from './credentialprovider';
 declare class FsCredProvider extends CortexCredentialProvider {
-    key: string;
-    iv: string;
-    configFileName: string;
+    private key;
+    private iv;
+    private configFileName;
     constructor(ops: CredentialProviderOptions & {
         clientId: string;
         clientSecret: string;
     } & {
-        key: string;
-        iv: string;
+        key: ArrayBufferView;
+        iv: ArrayBufferView;
         configFileName: string;
     });
     private fullSync;
@@ -29,7 +29,7 @@ declare class FsCredProvider extends CortexCredentialProvider {
         validUntil: number;
     }): Promise<Credentials>;
 }
-export declare function fsCredProvider(ops: CredentialProviderOptions & {
+export declare function fsCredentialsFactory(ops: CredentialProviderOptions & {
     envPrefix?: string;
     clientId?: string;
     clientSecret?: string;

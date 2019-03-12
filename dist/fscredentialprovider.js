@@ -17,7 +17,7 @@ const error_1 = require("./error");
 const process_1 = require("process");
 const credentialprovider_1 = require("./credentialprovider");
 const crypto_1 = require("crypto");
-const fs_1 = require("fs");
+const fs = require("fs");
 function isConfigFile(obj) {
     return typeof obj == 'object' &&
         obj.credentialItems && typeof obj.credentialItems == 'object' &&
@@ -30,7 +30,7 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
         super(ops);
         this.key = ops.key;
         this.iv = ops.iv;
-        this.configFileName = this.configFileName;
+        this.configFileName = ops.configFileName;
     }
     async fullSync() {
         let configFile = {
@@ -38,16 +38,11 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
             refreshTokens: {}
         };
         Object.entries(this.credentialsRefreshToken).forEach(v => {
-            let aes = crypto_1.createCipheriv('aes-128-ccm', this.key, this.iv);
-            aes.update(v[1]);
-            configFile.refreshTokens[v[0]] = aes.final('base64');
+            let aes = crypto_1.createCipheriv('aes128', this.key, this.iv);
+            let payload = Buffer.concat([aes.update(Buffer.from(v[1], 'utf8')), aes.final()]).toString('base64');
+            configFile.refreshTokens[v[0]] = payload;
         });
-        try {
-            await fs_1.promises.writeFile(this.configFileName, JSON.stringify(configFile));
-        }
-        catch (e) {
-            throw error_1.PanCloudError.fromError(this, e);
-        }
+        await promifyFs(this, fs.writeFile, this.configFileName, JSON.stringify(configFile, undefined, ' '));
     }
     createCortexRefreshToken(datalakeId, refreshToken) {
         return this.fullSync();
@@ -64,9 +59,9 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
         if (!cryptedRefreshToken) {
             throw new error_1.PanCloudError(this, 'CONFIG', `Refresh token for datalake ${datalakeId} not found in configuration file ${this.configFileName}`);
         }
-        let decr = crypto_1.createDecipheriv('aes-128-ccm', this.key, this.iv);
-        decr.update(Buffer.from(cryptedRefreshToken, 'base64'));
-        return decr.final('utf8');
+        let decr = crypto_1.createDecipheriv('aes128', this.key, this.iv);
+        let refreshToken = Buffer.concat([decr.update(Buffer.from(cryptedRefreshToken, 'base64')), decr.final()]).toString('utf8');
+        return refreshToken;
     }
     createCredentialsItem(datalakeId, credentialsItem) {
         return this.fullSync();
@@ -80,7 +75,7 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
     async loadConfigFile() {
         let jsonConfig;
         try {
-            let configFile = await fs_1.promises.readFile(this.configFileName);
+            let configFile = await promifyFs(this, fs.readFile, this.configFileName);
             jsonConfig = JSON.parse(configFile.toString('utf8'));
         }
         catch (e) {
@@ -101,7 +96,7 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
 }
 const ENV_PREFIX = 'PAN';
 const CONFIG_FILE = 'pancloud_config.js';
-async function fsCredProvider(ops) {
+async function fsCredentialsFactory(ops) {
     let { key, iv } = passIvGenerator(ops.secret);
     let ePrefix = (ops && ops.envPrefix) ? ops.envPrefix : ENV_PREFIX;
     let envClientId = `${ePrefix}_MASTER_CLIENTID`;
@@ -118,7 +113,7 @@ async function fsCredProvider(ops) {
     common_1.commonLogger.info({ className: "defaultCredentialsFactory" }, `Got 'client_secret' from environment variable ${envClientSecret}`);
     let configFileName = `${ePrefix}_${CONFIG_FILE}`;
     try {
-        await fs_1.promises.stat(configFileName);
+        await promifyFs(this, fs.stat, configFileName);
     }
     catch (e) {
         common_1.commonLogger.info({ className: 'fsCredProvider' }, `${configFileName} does not exist. Creating it`);
@@ -126,21 +121,33 @@ async function fsCredProvider(ops) {
             credentialItems: {},
             refreshTokens: {}
         };
-        await fs_1.promises.writeFile(configFileName, JSON.stringify(blankConfig));
+        await promifyFs(this, fs.writeFile, configFileName, JSON.stringify(blankConfig));
     }
     try {
-        await fs_1.promises.access(configFileName, fs_1.constants.W_OK | fs_1.constants.R_OK);
+        await promifyFs(this, fs.access, configFileName, fs.constants.W_OK | fs.constants.R_OK);
     }
     catch (e) {
         throw new error_1.PanCloudError({ className: 'fsCredProvider' }, 'CONFIG', `Invalid permissions in configuration file ${configFileName}`);
     }
     return new FsCredProvider(Object.assign({ clientId: cId, clientSecret: cSec, key: key, iv: iv, configFileName: configFileName }, ops));
 }
-exports.fsCredProvider = fsCredProvider;
+exports.fsCredentialsFactory = fsCredentialsFactory;
 function passIvGenerator(secret) {
     let code = crypto_1.createHash('sha1').update(secret).digest();
+    let key = new DataView(code.buffer.slice(0, 16));
+    let iv = new DataView(code.buffer.slice(4, 20));
     return {
-        key: code.toString('utf8', 0, 16),
-        iv: code.toString('utf8', 16, 32)
+        key: key,
+        iv: iv
     };
+}
+function promifyFs(source, f, ...params) {
+    return new Promise((resolve, reject) => {
+        f(...params, (e, data) => {
+            if (e) {
+                reject(error_1.PanCloudError.fromError(source, e));
+            }
+            resolve(data);
+        });
+    });
 }
