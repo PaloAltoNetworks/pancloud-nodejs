@@ -5,7 +5,7 @@
 import { fetch, FetchOptions, HttpMethod } from './fetch'
 import { Credentials } from './credentials'
 import { ApplicationFrameworkError, PanCloudError } from './error'
-import { commonLogger, LogLevel, retrier } from './common';
+import { commonLogger, LogLevel, retrier } from './common'
 
 /**
  * Core class runtime statistic metrics

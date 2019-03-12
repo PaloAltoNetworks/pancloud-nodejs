@@ -4,6 +4,7 @@ export interface CredentialsItem {
     validUntil: number;
     datalakeId: string;
 }
+export declare function isCredentialItem(obj: any): obj is CredentialsItem;
 export interface RefreshResult {
     accessToken: string;
     validUntil: number;
@@ -20,8 +21,12 @@ export declare abstract class CortexCredentialProvider {
     private clientSecret;
     private idpTokenUrl;
     private idpRevokeUrl;
-    private credentials;
-    private credentialsRefreshToken;
+    protected credentials: {
+        [dlid: string]: CredentialsItem;
+    };
+    protected credentialsRefreshToken: {
+        [dlid: string]: string;
+    };
     private credentialsObject;
     private retrierAttempts?;
     private retrierDelay?;
@@ -44,10 +49,17 @@ export declare abstract class CortexCredentialProvider {
     private fetchTokens;
     private restoreState;
     deleteDatalake(datalakeId: string): Promise<void>;
-    registerDatalake(datalakeId: string, code: string, redirectUri: string): Promise<Credentials>;
+    private settleCredObject;
+    registerCodeDatalake(datalakeId: string, code: string, redirectUri: string): Promise<Credentials>;
+    private issueWithRefreshToken;
+    registerManualDatalake(datalakeId: string, refreshToken: string): Promise<Credentials>;
     issueCredentialsObject(datalakeId: string): Promise<Credentials>;
     retrieveCortexAccessToken(datalakeId: string): Promise<RefreshResult>;
     private parseIdpResponse;
+    protected defaultCredentialsObjectFactory(datalakeId: string, accTokenGuardTime: number, prefetch?: {
+        accessToken: string;
+        validUntil: number;
+    }): Promise<Credentials>;
     protected abstract createCortexRefreshToken(datalakeId: string, refreshToken: string): Promise<void>;
     protected abstract updateCortexRefreshToken(datalakeId: string, refreshToken: string): Promise<void>;
     protected abstract deleteCortexRefreshToken(datalakeId: string): Promise<void>;

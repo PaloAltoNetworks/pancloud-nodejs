@@ -4,6 +4,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 const error_1 = require("./error");
+const crypto_1 = require("crypto");
 var LogLevel;
 (function (LogLevel) {
     LogLevel[LogLevel["DEBUG"] = 0] = "DEBUG";
@@ -183,3 +184,8 @@ function expTokenExtractor(source, token) {
     throw new error_1.PanCloudError(source, 'PARSER', 'JWT token does not have a valid "exp" field');
 }
 exports.expTokenExtractor = expTokenExtractor;
+function uid() {
+    let data = `pancloud${Date.now()}nodejs`;
+    return crypto_1.createHash('sha1').update(data).digest('base64');
+}
+exports.uid = uid;

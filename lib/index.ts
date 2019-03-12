@@ -10,5 +10,5 @@ export { isSdkError, PanCloudError } from './error'
 export { Util } from './util'
 export {
     CortexCredentialProvider, CredentialProviderOptions,
-    CredentialsItem, RefreshResult, defaultCredentialsFactory
+    CredentialsItem, RefreshResult, defaultCredentialsFactory, isCredentialItem
 } from './credentialprovider'

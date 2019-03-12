@@ -215,7 +215,7 @@ export interface LsOptions extends EmitterOptions {
 export class LoggingService extends Emitter {
     private eevent: EmitterInterface<any[]>
     private apSleep: number
-    private tout: NodeJS.Timeout | undefined
+    private tout: NodeJS.Timer | undefined
     private jobQueue: { [i: string]: JobEntry }
     private lastProcElement: number
     private pendingQueries: string[]

@@ -279,7 +279,7 @@ export class EventService extends Emitter implements Iterable<Promise<EsEvent[]>
     private flushPath: string
     private popts: EsPollOptions
     private apSleep: number
-    private tout: NodeJS.Timeout | undefined
+    private tout: NodeJS.Timer | undefined
     private polling: boolean
     private eevent: EmitterInterface<any[]>
     protected stats: EsStats

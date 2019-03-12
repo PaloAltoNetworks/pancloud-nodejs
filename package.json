@@ -26,7 +26,5 @@
   },
   "homepage": "https://github.com/PaloAltoNetworks/pancloud-nodejs#readme",
   "dependencies": {},
-  "devDependencies": {
-    "@types/node-fetch": "^2.1.4"
-  }
+  "devDependencies": {}
 }

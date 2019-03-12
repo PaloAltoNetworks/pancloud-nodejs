@@ -8,4 +8,4 @@ export { EmitterInterface, L2correlation } from './emitter';
 export { LogLevel, retrier, commonLogger } from './common';
 export { isSdkError, PanCloudError } from './error';
 export { Util } from './util';
-export { CortexCredentialProvider, CredentialProviderOptions, CredentialsItem, RefreshResult, defaultCredentialsFactory } from './credentialprovider';
+export { CortexCredentialProvider, CredentialProviderOptions, CredentialsItem, RefreshResult, defaultCredentialsFactory, isCredentialItem } from './credentialprovider';

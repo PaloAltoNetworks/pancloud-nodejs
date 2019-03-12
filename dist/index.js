@@ -24,3 +24,4 @@ exports.Util = util_1.Util;
 var credentialprovider_1 = require("./credentialprovider");
 exports.CortexCredentialProvider = credentialprovider_1.CortexCredentialProvider;
 exports.defaultCredentialsFactory = credentialprovider_1.defaultCredentialsFactory;
+exports.isCredentialItem = credentialprovider_1.isCredentialItem;

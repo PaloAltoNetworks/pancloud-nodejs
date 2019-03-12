@@ -3,6 +3,7 @@
  */
 
 import { SdkErr, PanCloudError } from './error'
+import { createHash } from 'crypto'
 
 /**
  * A pancloud class must provide a className property that will be used to format its log messages
@@ -217,8 +218,13 @@ export function expTokenExtractor(source: PancloudClass, token: string): number 
     } catch {
         throw new PanCloudError(source, 'PARSER', 'Not a valid JWT token format')
     }
-    if(typeof expAttribute == 'number') {
+    if (typeof expAttribute == 'number') {
         return expAttribute
     }
     throw new PanCloudError(source, 'PARSER', 'JWT token does not have a valid "exp" field')
+}
+
+export function uid(): string {
+    let data = `pancloud${Date.now()}nodejs`
+    return createHash('sha1').update(data).digest('base64')
 }

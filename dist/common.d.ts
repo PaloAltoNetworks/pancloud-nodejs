@@ -82,4 +82,5 @@ export declare function setLogger(logger: PancloudLogger): void;
  */
 export declare function retrier<T, O>(source: PancloudClass, n: number | undefined, delay: number | undefined, handler: (...args: T[]) => Promise<O>, ...params: T[]): Promise<O>;
 export declare function expTokenExtractor(source: PancloudClass, token: string): number;
+export declare function uid(): string;
 export {};
