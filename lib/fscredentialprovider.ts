@@ -36,6 +36,7 @@ class FsCredProvider extends CortexCredentialProvider {
     private key: ArrayBufferView
     private iv: ArrayBufferView
     private configFileName: string
+    className = 'FsCredProvider'
 
     constructor(ops: CredentialProviderOptions &
     { clientId: string, clientSecret: string } &
@@ -60,14 +61,17 @@ class FsCredProvider extends CortexCredentialProvider {
     }
 
     protected createCortexRefreshToken(datalakeId: string, refreshToken: string): Promise<void> {
+        commonLogger.info(this, `Lazy implementation of CREATE refresh token request for datalake ${datalakeId} with a full synch operation`)
         return this.fullSync()
     }
 
     protected updateCortexRefreshToken(datalakeId: string, refreshToken: string): Promise<void> {
+        commonLogger.info(this, `Lazy implementation of UPDATE refresh token request for datalake ${datalakeId} with a full synch operation`)
         return this.fullSync()
     }
 
     protected deleteCortexRefreshToken(datalakeId: string): Promise<void> {
+        commonLogger.info(this, `Lazy implementation of DELETE refresh token request for datalake ${datalakeId} with a full synch operation`)
         return this.fullSync()
     }
 
@@ -79,18 +83,22 @@ class FsCredProvider extends CortexCredentialProvider {
         }
         let decr = createDecipheriv('aes128', this.key, this.iv)
         let refreshToken = Buffer.concat([decr.update(Buffer.from(cryptedRefreshToken, 'base64')), decr.final()]).toString('utf8')
+        commonLogger.info(this, `Successfully retrieved the refresh token for datalake id ${datalakeId} from the configuration file ${this.configFileName}`)
         return refreshToken
     }
 
     protected createCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem): Promise<void> {
+        commonLogger.info(this, `Lazy implementation of CREATE credentials request for datalake ${datalakeId} with a full synch operation`)
         return this.fullSync()
     }
 
     protected updateCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem): Promise<void> {
+        commonLogger.info(this, `Lazy implementation of UPDATE credentials request for datalake ${datalakeId} with a full synch operation`)
         return this.fullSync()
     }
 
     protected deleteCredentialsItem(datalakeId: string): Promise<void> {
+        commonLogger.info(this, `Lazy implementation of DELETE credentials request for datalake ${datalakeId} with a full synch operation`)
         return this.fullSync()
     }
 
@@ -110,6 +118,7 @@ class FsCredProvider extends CortexCredentialProvider {
 
     protected async loadCredentialsDb(): Promise<{ [dlid: string]: CredentialsItem }> {
         let configFile = await this.loadConfigFile()
+        commonLogger.info(this, `Loaded ${Object.keys(configFile.credentialItems).length} entities from the configuration file ${this.configFileName}`)
         return configFile.credentialItems
     }
 

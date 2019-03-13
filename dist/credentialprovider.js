@@ -113,19 +113,87 @@ class CortexCredentialProvider {
     }
     async restoreState() {
         this.credentials = await this.loadCredentialsDb();
+        this.credentialsRefreshToken = {};
         this.credentialsObject = {};
-        if (!this.credentialsRefreshToken) {
-            this.credentialsRefreshToken = {};
-        }
         for (let datalakeId in this.credentials) {
             if (!this.credentialsRefreshToken[datalakeId]) {
-                this.credentialsRefreshToken[datalakeId] = await this.retrieveCortexRefreshToken(datalakeId);
+                try {
+                    this.credentialsRefreshToken[datalakeId] = await this.retrieveCortexRefreshToken(datalakeId);
+                    this.credentialsObject[datalakeId] = await this.credentialsObjectFactory(datalakeId, this.accTokenGuardTime);
+                }
+                catch (_a) {
+                    common_1.commonLogger.info(this, `Refresh Token for datalake ${datalakeId} not available at restore time`);
+                }
             }
-            this.credentialsObject[datalakeId] = await this.credentialsObjectFactory(datalakeId, this.accTokenGuardTime);
         }
         common_1.commonLogger.info(this, `Successfully restored ${Object.keys(this.credentials).length} items`);
     }
+    async settleCredObject(datalakeId, accessToken, validUntil) {
+        let credentialsObject = await this.credentialsObjectFactory(datalakeId, this.accTokenGuardTime, {
+            accessToken: accessToken,
+            validUntil: validUntil
+        });
+        let credItem = {
+            accessToken: accessToken,
+            datalakeId: datalakeId,
+            validUntil: validUntil,
+        };
+        this.credentials[datalakeId] = credItem;
+        this.credentialsObject[datalakeId] = credentialsObject;
+        await this.createCredentialsItem(datalakeId, credItem);
+        common_1.commonLogger.info(this, `Issued new Credentials Object for datalake ID ${datalakeId}`);
+        return credentialsObject;
+    }
+    async issueWithRefreshToken(datalakeId, refreshToken) {
+        if (!this.credentials) {
+            await this.restoreState();
+        }
+        if (this.credentialsRefreshToken[datalakeId] == refreshToken) {
+            return this.issueCredentialsObject(datalakeId);
+        }
+        if (!this.credentialsRefreshToken[datalakeId]) {
+            this.credentialsRefreshToken[datalakeId] = refreshToken;
+            await this.createCortexRefreshToken(datalakeId, refreshToken);
+        }
+        else {
+            this.credentialsRefreshToken[datalakeId] = refreshToken;
+            await this.updateCortexRefreshToken(datalakeId, refreshToken);
+        }
+        let idpResponse = await this.refreshAccessToken(refreshToken);
+        if (idpResponse.refresh_token) {
+            this.credentialsRefreshToken[datalakeId] = idpResponse.refresh_token;
+            common_1.commonLogger.info(this, `Received new Cortex Refresh Token for datalake ID ${datalakeId} from Identity Provider`);
+            await this.updateCortexRefreshToken(datalakeId, idpResponse.refresh_token);
+        }
+        common_1.commonLogger.info(this, `Retrieved Access Token for datalake ID ${datalakeId} from Identity Provider`);
+        return this.settleCredObject(datalakeId, idpResponse.access_token, idpResponse.validUntil);
+    }
+    async registerCodeDatalake(datalakeId, code, redirectUri) {
+        let idpResponse = await this.fetchTokens(code, redirectUri);
+        if (!idpResponse.refresh_token) {
+            throw new error_1.PanCloudError(this, 'IDENTITY', 'Identity response does not include a refresh token');
+        }
+        return this.issueWithRefreshToken(datalakeId, idpResponse.refresh_token);
+    }
+    async registerManualDatalake(datalakeId, refreshToken) {
+        return this.issueWithRefreshToken(datalakeId, refreshToken);
+    }
+    async issueCredentialsObject(datalakeId) {
+        if (!this.credentials) {
+            await this.restoreState();
+        }
+        if (this.credentials[datalakeId]) {
+            common_1.commonLogger.info(this, `Providing cached credentials object for datalake ID ${datalakeId}`);
+            return this.credentialsObject[datalakeId];
+        }
+        let refreshToken = await this.retrieveCortexRefreshToken(datalakeId);
+        common_1.commonLogger.info(this, `Retrieved Cortex Refresh Token for datalake ID ${datalakeId} from Store`);
+        return this.issueWithRefreshToken(datalakeId, refreshToken);
+    }
     async deleteDatalake(datalakeId) {
+        if (!this.credentials) {
+            await this.restoreState();
+        }
         let param = {
             method: 'POST',
             headers: {
@@ -145,67 +213,6 @@ class CortexCredentialProvider {
         delete this.credentials[datalakeId];
         await this.deleteCredentialsItem(datalakeId);
         delete this.credentialsObject[datalakeId];
-    }
-    async settleCredObject(datalakeId, accessToken, validUntil) {
-        let credentialsObject = await this.credentialsObjectFactory(datalakeId, this.accTokenGuardTime, {
-            accessToken: accessToken,
-            validUntil: validUntil
-        });
-        let credItem = {
-            accessToken: accessToken,
-            datalakeId: datalakeId,
-            validUntil: validUntil,
-        };
-        this.credentials[datalakeId] = credItem;
-        this.credentialsObject[datalakeId] = credentialsObject;
-        await this.createCredentialsItem(datalakeId, credItem);
-        common_1.commonLogger.info(this, `Issued new Credentials Object for datalake ID ${datalakeId}`);
-        return credentialsObject;
-    }
-    async registerCodeDatalake(datalakeId, code, redirectUri) {
-        if (!this.credentials) {
-            await this.restoreState();
-        }
-        let idpResponse = await this.fetchTokens(code, redirectUri);
-        if (!idpResponse.refresh_token) {
-            throw new error_1.PanCloudError(this, 'IDENTITY', 'Identity response does not include a refresh token');
-        }
-        this.credentialsRefreshToken[datalakeId] = idpResponse.refresh_token;
-        this.createCortexRefreshToken(datalakeId, idpResponse.refresh_token);
-        common_1.commonLogger.info(this, `Successfully registered code for datalake ID ${datalakeId} with Identity Provider`);
-        return this.settleCredObject(datalakeId, idpResponse.access_token, idpResponse.validUntil);
-    }
-    async issueWithRefreshToken(datalakeId, refreshToken, create = false) {
-        this.credentialsRefreshToken[datalakeId] = refreshToken;
-        if (create) {
-            this.createCortexRefreshToken(datalakeId, refreshToken);
-        }
-        let idpResponse = await this.refreshAccessToken(refreshToken);
-        if (idpResponse.refresh_token) {
-            this.credentialsRefreshToken[datalakeId] = idpResponse.refresh_token;
-            common_1.commonLogger.info(this, `Received new Cortex Refresh Token for datalake ID ${datalakeId} from Identity Provider`);
-            await this.updateCortexRefreshToken(datalakeId, idpResponse.refresh_token);
-        }
-        common_1.commonLogger.info(this, `Retrieved Access Token for datalake ID ${datalakeId} from Identity Provider`);
-        return this.settleCredObject(datalakeId, idpResponse.access_token, idpResponse.validUntil);
-    }
-    async registerManualDatalake(datalakeId, refreshToken) {
-        if (!this.credentials) {
-            await this.restoreState();
-        }
-        return this.issueWithRefreshToken(datalakeId, refreshToken, true);
-    }
-    async issueCredentialsObject(datalakeId) {
-        if (!this.credentials) {
-            await this.restoreState();
-        }
-        if (this.credentials[datalakeId]) {
-            common_1.commonLogger.info(this, `Providing cached credentials object for datalake ID ${datalakeId}`);
-            return this.credentialsObject[datalakeId];
-        }
-        let refreshToken = await this.retrieveCortexRefreshToken(datalakeId);
-        common_1.commonLogger.info(this, `Retrieved Cortex Refresh Token for datalake ID ${datalakeId} from Store`);
-        return this.issueWithRefreshToken(datalakeId, refreshToken);
     }
     async retrieveCortexAccessToken(datalakeId) {
         if (!this.credentials) {
@@ -253,7 +260,7 @@ class CortexCredentialProvider {
         if (prefetch) {
             credObject.putAccessToken(prefetch.accessToken, prefetch.validUntil);
         }
-        common_1.commonLogger.info(this, `Issued a new credential object from the factory for datalake id ${datalakeId}`);
+        common_1.commonLogger.info(this, `Instantiated new credential object from the factory for datalake id ${datalakeId}`);
         return credObject;
     }
 }

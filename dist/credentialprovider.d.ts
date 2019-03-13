@@ -48,12 +48,12 @@ export declare abstract class CortexCredentialProvider {
      */
     private fetchTokens;
     private restoreState;
-    deleteDatalake(datalakeId: string): Promise<void>;
     private settleCredObject;
-    registerCodeDatalake(datalakeId: string, code: string, redirectUri: string): Promise<Credentials>;
     private issueWithRefreshToken;
+    registerCodeDatalake(datalakeId: string, code: string, redirectUri: string): Promise<Credentials>;
     registerManualDatalake(datalakeId: string, refreshToken: string): Promise<Credentials>;
     issueCredentialsObject(datalakeId: string): Promise<Credentials>;
+    deleteDatalake(datalakeId: string): Promise<void>;
     retrieveCortexAccessToken(datalakeId: string): Promise<RefreshResult>;
     private parseIdpResponse;
     protected defaultCredentialsObjectFactory(datalakeId: string, accTokenGuardTime: number, prefetch?: {

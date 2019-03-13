@@ -28,6 +28,7 @@ function isConfigFile(obj) {
 class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
     constructor(ops) {
         super(ops);
+        this.className = 'FsCredProvider';
         this.key = ops.key;
         this.iv = ops.iv;
         this.configFileName = ops.configFileName;
@@ -45,12 +46,15 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
         await promifyFs(this, fs.writeFile, this.configFileName, JSON.stringify(configFile, undefined, ' '));
     }
     createCortexRefreshToken(datalakeId, refreshToken) {
+        common_1.commonLogger.info(this, `Lazy implementation of CREATE refresh token request for datalake ${datalakeId} with a full synch operation`);
         return this.fullSync();
     }
     updateCortexRefreshToken(datalakeId, refreshToken) {
+        common_1.commonLogger.info(this, `Lazy implementation of UPDATE refresh token request for datalake ${datalakeId} with a full synch operation`);
         return this.fullSync();
     }
     deleteCortexRefreshToken(datalakeId) {
+        common_1.commonLogger.info(this, `Lazy implementation of DELETE refresh token request for datalake ${datalakeId} with a full synch operation`);
         return this.fullSync();
     }
     async retrieveCortexRefreshToken(datalakeId) {
@@ -61,15 +65,19 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
         }
         let decr = crypto_1.createDecipheriv('aes128', this.key, this.iv);
         let refreshToken = Buffer.concat([decr.update(Buffer.from(cryptedRefreshToken, 'base64')), decr.final()]).toString('utf8');
+        common_1.commonLogger.info(this, `Successfully retrieved the refresh token for datalake id ${datalakeId} from the configuration file ${this.configFileName}`);
         return refreshToken;
     }
     createCredentialsItem(datalakeId, credentialsItem) {
+        common_1.commonLogger.info(this, `Lazy implementation of CREATE credentials request for datalake ${datalakeId} with a full synch operation`);
         return this.fullSync();
     }
     updateCredentialsItem(datalakeId, credentialsItem) {
+        common_1.commonLogger.info(this, `Lazy implementation of UPDATE credentials request for datalake ${datalakeId} with a full synch operation`);
         return this.fullSync();
     }
     deleteCredentialsItem(datalakeId) {
+        common_1.commonLogger.info(this, `Lazy implementation of DELETE credentials request for datalake ${datalakeId} with a full synch operation`);
         return this.fullSync();
     }
     async loadConfigFile() {
@@ -88,6 +96,7 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
     }
     async loadCredentialsDb() {
         let configFile = await this.loadConfigFile();
+        common_1.commonLogger.info(this, `Loaded ${Object.keys(configFile.credentialItems).length} entities from the configuration file ${this.configFileName}`);
         return configFile.credentialItems;
     }
     credentialsObjectFactory(datalakeId, accTokenGuardTime, prefetch) {

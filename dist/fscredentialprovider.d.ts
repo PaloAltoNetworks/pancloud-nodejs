@@ -4,6 +4,7 @@ declare class FsCredProvider extends CortexCredentialProvider {
     private key;
     private iv;
     private configFileName;
+    className: string;
     constructor(ops: CredentialProviderOptions & {
         clientId: string;
         clientSecret: string;
