@@ -64,7 +64,13 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
             throw new error_1.PanCloudError(this, 'CONFIG', `Refresh token for datalake ${datalakeId} not found in configuration file ${this.configFileName}`);
         }
         let decr = crypto_1.createDecipheriv('aes128', this.key, this.iv);
-        let refreshToken = Buffer.concat([decr.update(Buffer.from(cryptedRefreshToken, 'base64')), decr.final()]).toString('utf8');
+        let refreshToken = '';
+        try {
+            refreshToken = Buffer.concat([decr.update(Buffer.from(cryptedRefreshToken, 'base64')), decr.final()]).toString('utf8');
+        }
+        catch (_a) {
+            throw new error_1.PanCloudError(this, 'PARSER', `Unable to decipher the refresh token for datalake ${datalakeId}. Wrong secret?`);
+        }
         common_1.commonLogger.info(this, `Successfully retrieved the refresh token for datalake id ${datalakeId} from the configuration file ${this.configFileName}`);
         return refreshToken;
     }

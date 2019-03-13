@@ -174,6 +174,7 @@ export abstract class CortexCredentialProvider {
                     this.credentialsObject[datalakeId] = await this.credentialsObjectFactory(datalakeId, this.accTokenGuardTime)
                 } catch {
                     commonLogger.info(this, `Refresh Token for datalake ${datalakeId} not available at restore time`)
+                    delete this.credentials[datalakeId]
                 }
             }
         }
@@ -318,10 +319,7 @@ export abstract class CortexCredentialProvider {
 
     protected async defaultCredentialsObjectFactory(datalakeId: string, accTokenGuardTime: number,
         prefetch?: { accessToken: string, validUntil: number }): Promise<Credentials> {
-        let credObject = new DefaultCredentials(datalakeId, accTokenGuardTime, this)
-        if (prefetch) {
-            credObject.putAccessToken(prefetch.accessToken, prefetch.validUntil)
-        }
+        let credObject = new DefaultCredentials(datalakeId, accTokenGuardTime, this, prefetch)
         commonLogger.info(this, `Instantiated new credential object from the factory for datalake id ${datalakeId}`)
         return credObject
     }
@@ -400,10 +398,14 @@ class DefaultCredentials extends Credentials {
     accessTokenSupplier: CortexCredentialProvider
     datalakeId: string
 
-    constructor(datalakeId: string, accTokenGuardTime: number, supplier: CortexCredentialProvider) {
+    constructor(datalakeId: string, accTokenGuardTime: number, supplier: CortexCredentialProvider,
+        prefetch?: { accessToken: string, validUntil: number }) {
         super(accTokenGuardTime)
         this.datalakeId = datalakeId
         this.accessTokenSupplier = supplier
+        if (prefetch) {
+            this.setAccessToken(prefetch.accessToken, prefetch.validUntil)
+        }
         this.className = 'DefaultCredentials'
     }
 
@@ -411,10 +413,6 @@ class DefaultCredentials extends Credentials {
         let refreshObj = await this.accessTokenSupplier.retrieveCortexAccessToken(this.datalakeId)
         this.setAccessToken(refreshObj.accessToken, refreshObj.validUntil)
         commonLogger.info(this, `Successfully cached a new access token for datalake ID ${this.datalakeId}`)
-    }
-
-    putAccessToken(accessToken: string, validUntil: number): void {
-        return this.setAccessToken(accessToken, validUntil)
     }
 }
 

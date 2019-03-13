@@ -1,4 +1,4 @@
-import { ApiPath, EntryPoint } from "./common"
+import { ApiPath, EntryPoint, commonLogger } from "./common"
 import { URL } from 'url'
 import { CoreClass, CoreOptions, CoreStats } from "./core"
 import { PanCloudError } from "./exceptions";
@@ -256,6 +256,7 @@ export class DirectorySyncService extends CoreClass {
      * @param ops configuration object
      */
     static async factory(entryPoint: EntryPoint, ops: DssOptions) {
+        commonLogger.info({ className: 'DirectorySyncService' }, `Creating new DirectorySyncService object for entryPoint ${entryPoint}`)
         return new DirectorySyncService(new URL(DSS_PATH, entryPoint).toString(), ops)
     }
 
@@ -278,6 +279,7 @@ export class DirectorySyncService extends CoreClass {
      */
     async attributes(): Promise<DssAttributeMap> {
         this.stats.attributeCalls++
+        commonLogger.info(this, '*attributes* get request')
         return this.fetcher('/attributes', isDssResponseAttrMap, x => x.result)
     }
 
@@ -287,6 +289,7 @@ export class DirectorySyncService extends CoreClass {
      */
     async domains(): Promise<DssDomain[]> {
         this.stats.domainCalls++
+        commonLogger.info(this, '*domains* get request')
         return this.fetcher('/domains', isDssResponseDomains, x => x.result)
     }
 
@@ -298,6 +301,7 @@ export class DirectorySyncService extends CoreClass {
      */
     async count(domain: string, objClass: DssObjClass): Promise<number> {
         this.stats.countCalls++
+        commonLogger.info(this, `${objClass}/count get request for domain ${domain}`)
         return this.fetcher(`/${objClass}/count?domain=${encodeURIComponent(domain)}`,
             isDssResponseCount, x => x.result.count)
     }
@@ -310,6 +314,7 @@ export class DirectorySyncService extends CoreClass {
      */
     async query(objClass: DssObjClass, query?: DssQueryFilter): Promise<DssResponseQuery> {
         this.stats.queryCalls++
+        commonLogger.info(this, `*query* request for ${objClass}. Query: ${query}`)
         return this.fetcher(`/${objClass}`, isDssResponseQuery, x => x, (query) ? query : {})
     }
 

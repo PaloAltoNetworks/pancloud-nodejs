@@ -81,6 +81,7 @@ class EventService extends emitter_1.Emitter {
      * @returns an instantiated **EventService** object
      */
     static factory(entryPoint, esOps) {
+        common_1.commonLogger.info({ className: 'EventService' }, `Creating new EventService object for entryPoint ${entryPoint}`);
         return new EventService(new url_1.URL(esPath, entryPoint).toString(), esOps);
     }
     /**
@@ -88,6 +89,7 @@ class EventService extends emitter_1.Emitter {
      */
     async getFilters() {
         this.stats.filtergets++;
+        common_1.commonLogger.info(this, '*filters* get request');
         let rJson = await this.fetchGetWrap(this.filterPath);
         this.lastResponse = rJson;
         if (isEsFilter(rJson)) {
@@ -103,6 +105,7 @@ class EventService extends emitter_1.Emitter {
      * @returns a promise to the current Event Service to ease promise chaining
      */
     async setFilters(fcfg) {
+        common_1.commonLogger.info(this, `*filters* put request. Filter: ${JSON.stringify(fcfg)}`);
         this.stats.filtersets++;
         this.popts = (fcfg.filterOptions && fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO;
         await this.voidXOperation(this.filterPath, JSON.stringify(fcfg.filter), 'PUT');
@@ -164,6 +167,7 @@ class EventService extends emitter_1.Emitter {
      */
     async ack() {
         this.stats.acks++;
+        common_1.commonLogger.info(this, '*ack* get request');
         await this.voidXOperation(this.ackPath);
         return this;
     }
@@ -172,6 +176,7 @@ class EventService extends emitter_1.Emitter {
      */
     async nack() {
         this.stats.nacks++;
+        common_1.commonLogger.info(this, '*nack* get request');
         await this.voidXOperation(this.nackPath);
         return this;
     }
@@ -180,6 +185,7 @@ class EventService extends emitter_1.Emitter {
      */
     async flush() {
         this.stats.flushes++;
+        common_1.commonLogger.info(this, '*flush* get request');
         await this.voidXOperation(this.flushPath);
         return this;
     }
@@ -194,6 +200,7 @@ class EventService extends emitter_1.Emitter {
      */
     async poll() {
         this.stats.polls++;
+        common_1.commonLogger.info(this, '*poll* get request');
         let body = '{}';
         if (this.popts.pollTimeout != 1000) {
             body = JSON.stringify({ pollTimeout: this.popts.pollTimeout });

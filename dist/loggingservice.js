@@ -64,7 +64,7 @@ class LoggingService extends emitter_1.Emitter {
         this.jobQueue = {};
         this.lastProcElement = 0;
         this.pendingQueries = [];
-        this.stats = Object.assign({ records: 0, deletes: 0, polls: 0, queries: 0 }, this.stats);
+        this.stats = Object.assign({ records: 0, deletes: 0, polls: 0, queries: 0, writes: 0 }, this.stats);
     }
     /**
      * Static factory method to instantiate an Event Service object
@@ -73,6 +73,7 @@ class LoggingService extends emitter_1.Emitter {
      * @returns an instantiated **LoggingService** object
      */
     static factory(entryPoint, lsOps) {
+        common_1.commonLogger.info({ className: 'LoggingService' }, `Creating new LoggingService object for entryPoint ${entryPoint}`);
         return new LoggingService(new url_1.URL(lsPath, entryPoint).toString(), lsOps);
     }
     /**
@@ -86,6 +87,7 @@ class LoggingService extends emitter_1.Emitter {
      * @returns a promise with the Application Framework response
      */
     async query(cfg) {
+        common_1.commonLogger.info(this, `*queries* post request. Query: ${JSON.stringify(cfg)}`);
         this.stats.queries++;
         let providedLogType = cfg.logType;
         delete cfg.logType;
@@ -270,6 +272,7 @@ class LoggingService extends emitter_1.Emitter {
      * @param qid the query id to be cancelled
      */
     deleteQuery(queryId) {
+        common_1.commonLogger.info(this, `*queries* delete request. QueryID: ${queryId}`);
         this.stats.deletes++;
         return this.voidXOperation(`/queries/${queryId}`, undefined, 'DELETE');
     }
@@ -285,6 +288,8 @@ class LoggingService extends emitter_1.Emitter {
      * Palo Alto Networks. Refer to the documentation for more details
      */
     async write(vendorName, logType, data) {
+        this.stats.writes++;
+        common_1.commonLogger.info(this, `*logs* write for vendor name ${vendorName} and log type ${logType}`);
         let rJson = await this.fetchPostWrap(`/logs/${vendorName}/${logType}`, JSON.stringify(data));
         this.lastResponse = rJson;
         if (!isWriteResult(rJson)) {

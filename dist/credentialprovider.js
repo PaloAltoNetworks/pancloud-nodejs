@@ -123,6 +123,7 @@ class CortexCredentialProvider {
                 }
                 catch (_a) {
                     common_1.commonLogger.info(this, `Refresh Token for datalake ${datalakeId} not available at restore time`);
+                    delete this.credentials[datalakeId];
                 }
             }
         }
@@ -256,10 +257,7 @@ class CortexCredentialProvider {
         throw new error_1.PanCloudError(this, 'PARSER', `Invalid response received by IDP provider`);
     }
     async defaultCredentialsObjectFactory(datalakeId, accTokenGuardTime, prefetch) {
-        let credObject = new DefaultCredentials(datalakeId, accTokenGuardTime, this);
-        if (prefetch) {
-            credObject.putAccessToken(prefetch.accessToken, prefetch.validUntil);
-        }
+        let credObject = new DefaultCredentials(datalakeId, accTokenGuardTime, this, prefetch);
         common_1.commonLogger.info(this, `Instantiated new credential object from the factory for datalake id ${datalakeId}`);
         return credObject;
     }
@@ -311,19 +309,19 @@ class DefaultCredentialsProvider extends CortexCredentialProvider {
     }
 }
 class DefaultCredentials extends credentials_1.Credentials {
-    constructor(datalakeId, accTokenGuardTime, supplier) {
+    constructor(datalakeId, accTokenGuardTime, supplier, prefetch) {
         super(accTokenGuardTime);
         this.datalakeId = datalakeId;
         this.accessTokenSupplier = supplier;
+        if (prefetch) {
+            this.setAccessToken(prefetch.accessToken, prefetch.validUntil);
+        }
         this.className = 'DefaultCredentials';
     }
     async retrieveAccessToken() {
         let refreshObj = await this.accessTokenSupplier.retrieveCortexAccessToken(this.datalakeId);
         this.setAccessToken(refreshObj.accessToken, refreshObj.validUntil);
         common_1.commonLogger.info(this, `Successfully cached a new access token for datalake ID ${this.datalakeId}`);
-    }
-    putAccessToken(accessToken, validUntil) {
-        return this.setAccessToken(accessToken, validUntil);
     }
 }
 const ENV_PREFIX = 'PAN';

@@ -47,6 +47,7 @@ interface LsStats extends EmitterStats {
      * Number of **DELETE** calls to the **\/** entry point
      */
     deletes: number
+    writes: number
 }
 
 /**
@@ -234,6 +235,7 @@ export class LoggingService extends Emitter {
             deletes: 0,
             polls: 0,
             queries: 0,
+            writes: 0,
             ...this.stats
         }
     }
@@ -245,6 +247,7 @@ export class LoggingService extends Emitter {
      * @returns an instantiated **LoggingService** object
      */
     static factory(entryPoint: EntryPoint, lsOps: LsOptions): LoggingService {
+        commonLogger.info({ className: 'LoggingService' }, `Creating new LoggingService object for entryPoint ${entryPoint}`)
         return new LoggingService(new URL(lsPath, entryPoint).toString(), lsOps)
     }
 
@@ -259,6 +262,7 @@ export class LoggingService extends Emitter {
      * @returns a promise with the Application Framework response
      */
     async query(cfg: LsQueryCfg): Promise<JobResult> {
+        commonLogger.info(this, `*queries* post request. Query: ${JSON.stringify(cfg)}`)
         this.stats.queries++
         let providedLogType = cfg.logType
         delete cfg.logType
@@ -442,6 +446,7 @@ export class LoggingService extends Emitter {
      * @param qid the query id to be cancelled 
      */
     public deleteQuery(queryId: string): Promise<void> {
+        commonLogger.info(this, `*queries* delete request. QueryID: ${queryId}`)
         this.stats.deletes++
         return this.voidXOperation(`/queries/${queryId}`, undefined, 'DELETE')
     }
@@ -458,6 +463,8 @@ export class LoggingService extends Emitter {
      * Palo Alto Networks. Refer to the documentation for more details
      */
     public async write(vendorName: string, logType: string, data: any[]): Promise<WriteResult> {
+        this.stats.writes++
+        commonLogger.info(this, `*logs* write for vendor name ${vendorName} and log type ${logType}`)
         let rJson = await this.fetchPostWrap(`/logs/${vendorName}/${logType}`, JSON.stringify(data))
         this.lastResponse = rJson
         if (!isWriteResult(rJson)) {

@@ -320,6 +320,7 @@ export class EventService extends Emitter implements Iterable<Promise<EsEvent[]>
      * @returns an instantiated **EventService** object
      */
     static factory(entryPoint: EntryPoint, esOps: EsOptions): EventService {
+        commonLogger.info({ className: 'EventService' }, `Creating new EventService object for entryPoint ${entryPoint}`)
         return new EventService(new URL(esPath, entryPoint).toString(), esOps)
     }
 
@@ -328,6 +329,7 @@ export class EventService extends Emitter implements Iterable<Promise<EsEvent[]>
      */
     async getFilters(): Promise<EsFilter> {
         this.stats.filtergets++
+        commonLogger.info(this, '*filters* get request')
         let rJson = await this.fetchGetWrap(this.filterPath);
         this.lastResponse = rJson
         if (isEsFilter(rJson)) {
@@ -344,6 +346,7 @@ export class EventService extends Emitter implements Iterable<Promise<EsEvent[]>
      * @returns a promise to the current Event Service to ease promise chaining
      */
     async setFilters(fcfg: EsFilterCfg): Promise<EventService> {
+        commonLogger.info(this, `*filters* put request. Filter: ${JSON.stringify(fcfg)}`)
         this.stats.filtersets++
         this.popts = (fcfg.filterOptions && fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO
         await this.voidXOperation(this.filterPath, JSON.stringify(fcfg.filter), 'PUT')
@@ -413,6 +416,7 @@ export class EventService extends Emitter implements Iterable<Promise<EsEvent[]>
      */
     public async ack(): Promise<EventService> {
         this.stats.acks++
+        commonLogger.info(this, '*ack* get request')
         await this.voidXOperation(this.ackPath)
         return this
     }
@@ -422,6 +426,7 @@ export class EventService extends Emitter implements Iterable<Promise<EsEvent[]>
      */
     public async nack(): Promise<EventService> {
         this.stats.nacks++
+        commonLogger.info(this, '*nack* get request')
         await this.voidXOperation(this.nackPath)
         return this
     }
@@ -431,6 +436,7 @@ export class EventService extends Emitter implements Iterable<Promise<EsEvent[]>
      */
     public async flush(): Promise<EventService> {
         this.stats.flushes++
+        commonLogger.info(this, '*flush* get request')
         await this.voidXOperation(this.flushPath)
         return this
     }
@@ -447,6 +453,7 @@ export class EventService extends Emitter implements Iterable<Promise<EsEvent[]>
      */
     public async poll(): Promise<EsEvent[]> {
         this.stats.polls++
+        commonLogger.info(this, '*poll* get request')
         let body: string = '{}'
         if (this.popts.pollTimeout != 1000) {
             body = JSON.stringify({ pollTimeout: this.popts.pollTimeout })

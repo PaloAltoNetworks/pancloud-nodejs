@@ -34,6 +34,7 @@ interface LsStats extends EmitterStats {
      * Number of **DELETE** calls to the **\/** entry point
      */
     deletes: number;
+    writes: number;
 }
 /**
  * Interface to provide a query

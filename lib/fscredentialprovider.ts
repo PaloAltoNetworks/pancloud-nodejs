@@ -82,7 +82,12 @@ class FsCredProvider extends CortexCredentialProvider {
             throw new PanCloudError(this, 'CONFIG', `Refresh token for datalake ${datalakeId} not found in configuration file ${this.configFileName}`)
         }
         let decr = createDecipheriv('aes128', this.key, this.iv)
-        let refreshToken = Buffer.concat([decr.update(Buffer.from(cryptedRefreshToken, 'base64')), decr.final()]).toString('utf8')
+        let refreshToken = ''
+        try {
+            refreshToken = Buffer.concat([decr.update(Buffer.from(cryptedRefreshToken, 'base64')), decr.final()]).toString('utf8')
+        } catch {
+            throw new PanCloudError(this, 'PARSER', `Unable to decipher the refresh token for datalake ${datalakeId}. Wrong secret?`)
+        }
         commonLogger.info(this, `Successfully retrieved the refresh token for datalake id ${datalakeId} from the configuration file ${this.configFileName}`)
         return refreshToken
     }

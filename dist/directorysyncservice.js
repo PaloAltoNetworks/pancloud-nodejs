@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const common_1 = require("./common");
 const url_1 = require("url");
 const core_1 = require("./core");
 const exceptions_1 = require("./exceptions");
@@ -66,6 +67,7 @@ class DirectorySyncService extends core_1.CoreClass {
      * @param ops configuration object
      */
     static async factory(entryPoint, ops) {
+        common_1.commonLogger.info({ className: 'DirectorySyncService' }, `Creating new DirectorySyncService object for entryPoint ${entryPoint}`);
         return new DirectorySyncService(new url_1.URL(DSS_PATH, entryPoint).toString(), ops);
     }
     async fetcher(path, checker, action, query) {
@@ -87,6 +89,7 @@ class DirectorySyncService extends core_1.CoreClass {
      */
     async attributes() {
         this.stats.attributeCalls++;
+        common_1.commonLogger.info(this, '*attributes* get request');
         return this.fetcher('/attributes', isDssResponseAttrMap, x => x.result);
     }
     /**
@@ -95,6 +98,7 @@ class DirectorySyncService extends core_1.CoreClass {
      */
     async domains() {
         this.stats.domainCalls++;
+        common_1.commonLogger.info(this, '*domains* get request');
         return this.fetcher('/domains', isDssResponseDomains, x => x.result);
     }
     /**
@@ -105,6 +109,7 @@ class DirectorySyncService extends core_1.CoreClass {
      */
     async count(domain, objClass) {
         this.stats.countCalls++;
+        common_1.commonLogger.info(this, `${objClass}/count get request for domain ${domain}`);
         return this.fetcher(`/${objClass}/count?domain=${encodeURIComponent(domain)}`, isDssResponseCount, x => x.result.count);
     }
     /**
@@ -115,6 +120,7 @@ class DirectorySyncService extends core_1.CoreClass {
      */
     async query(objClass, query) {
         this.stats.queryCalls++;
+        common_1.commonLogger.info(this, `*query* request for ${objClass}. Query: ${query}`);
         return this.fetcher(`/${objClass}`, isDssResponseQuery, x => x, (query) ? query : {});
     }
     /**
