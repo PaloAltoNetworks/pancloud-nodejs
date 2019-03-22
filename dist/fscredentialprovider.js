@@ -20,6 +20,8 @@ const crypto_1 = require("crypto");
 const fs = require("fs");
 function isConfigFile(obj) {
     return typeof obj == 'object' &&
+        obj.stateSequence && typeof obj.stateSequence == 'number' &&
+        obj.authRequests && typeof obj.authRequests == 'object' &&
         obj.credentialItems && typeof obj.credentialItems == 'object' &&
         Object.entries(obj.credentialItems).every(v => typeof v[0] == 'string' && credentialprovider_1.isCredentialItem(v[1])) &&
         obj.refreshTokens && typeof obj.refreshTokens == 'object' &&
@@ -35,7 +37,9 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
     }
     async fullSync() {
         let configFile = {
+            stateSequence: this.seqno,
             credentialItems: this.credentials,
+            authRequests: this.authRequests,
             refreshTokens: {}
         };
         Object.entries(this.credentialsRefreshToken).forEach(v => {
@@ -98,6 +102,8 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
         if (!isConfigFile(jsonConfig)) {
             throw new error_1.PanCloudError(this, 'PARSER', `Invalid configuration file format in ${this.configFileName}`);
         }
+        this.seqno = jsonConfig.stateSequence;
+        this.authRequests = jsonConfig.authRequests;
         return jsonConfig;
     }
     async loadCredentialsDb() {
@@ -105,12 +111,34 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
         common_1.commonLogger.info(this, `Loaded ${Object.keys(configFile.credentialItems).length} entities from the configuration file ${this.configFileName}`);
         return configFile.credentialItems;
     }
+    async requestAuthState(datalakeId, clientParams) {
+        let newRequestState = (this.seqno++).toString();
+        this.authRequests[newRequestState] = {
+            datalakeId: datalakeId,
+            clientParams: clientParams
+        };
+        await this.fullSync();
+        common_1.commonLogger.info(this, `Stored new auth request for datalakeId ${datalakeId}. Provided state ${newRequestState}`);
+        return newRequestState;
+    }
+    restoreAuthState(state) {
+        if (!this.authRequests[state]) {
+            throw new error_1.PanCloudError(this, 'CONFIG', `Unknown authentication state ${state}`);
+        }
+        common_1.commonLogger.info(this, `Returning authentication state ${state}`);
+        return Promise.resolve(this.authRequests[state]);
+    }
+    deleteAuthState(state) {
+        delete this.authRequests[state];
+        common_1.commonLogger.info(this, `Deleted auth request state ${state} from storage with a full sync`);
+        return this.fullSync();
+    }
     credentialsObjectFactory(datalakeId, accTokenGuardTime, prefetch) {
         return this.defaultCredentialsObjectFactory(datalakeId, accTokenGuardTime, prefetch);
     }
 }
 const ENV_PREFIX = 'PAN';
-const CONFIG_FILE = 'pancloud_config.js';
+const CONFIG_FILE = 'PANCLOUD_CONFIG.json';
 async function fsCredentialsFactory(ops) {
     let { key, iv } = passIvGenerator(ops.secret);
     let ePrefix = (ops && ops.envPrefix) ? ops.envPrefix : ENV_PREFIX;
@@ -120,12 +148,12 @@ async function fsCredentialsFactory(ops) {
     if (!cId) {
         throw new error_1.PanCloudError({ className: 'DefaultCredentialsProvider' }, 'CONFIG', `Environment variable ${envClientId} not found or empty value`);
     }
-    common_1.commonLogger.info({ className: "defaultCredentialsFactory" }, `Got 'client_id' from environment variable ${envClientId}`);
+    common_1.commonLogger.info({ className: "defaultCredentialsFactory" }, `Got 'client_id'`);
     let cSec = (ops && ops.clientSecret) ? ops.clientSecret : process_1.env[envClientSecret];
     if (!cSec) {
         throw new error_1.PanCloudError({ className: 'DefaultCredentialsProvider' }, 'CONFIG', `Environment variable ${envClientSecret} not found or empty value`);
     }
-    common_1.commonLogger.info({ className: "defaultCredentialsFactory" }, `Got 'client_secret' from environment variable ${envClientSecret}`);
+    common_1.commonLogger.info({ className: "defaultCredentialsFactory" }, `Got 'client_secret'`);
     let configFileName = `${ePrefix}_${CONFIG_FILE}`;
     try {
         await promifyFs(this, fs.stat, configFileName);
@@ -133,6 +161,8 @@ async function fsCredentialsFactory(ops) {
     catch (e) {
         common_1.commonLogger.info({ className: 'fsCredProvider' }, `${configFileName} does not exist. Creating it`);
         let blankConfig = {
+            stateSequence: Math.floor(Date.now() * Math.random()),
+            authRequests: {},
             credentialItems: {},
             refreshTokens: {}
         };

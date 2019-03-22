@@ -52,6 +52,10 @@ declare const LTYPES: {
  * Convenience type to guide the developer using the right entry points
  */
 export declare type EntryPoint = 'https://api.eu.paloaltonetworks.com' | 'https://api.us.paloaltonetworks.com';
+export declare const region2EntryPoint: {
+    [region: string]: EntryPoint;
+};
+export declare type OAUTH2SCOPE = 'logging-service:read' | 'logging-service:write' | 'event-service:read' | 'directory-sync-service:read';
 export declare type ApiPath = "event-service/v1/channels" | "logging-service/v1" | "directory-sync-service/v1";
 /**
  * Convenience type to guide the developer using the common log types

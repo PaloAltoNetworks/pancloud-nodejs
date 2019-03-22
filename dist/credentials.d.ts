@@ -4,16 +4,6 @@
  */
 import { PancloudClass } from './common';
 /**
- * Configuration options to instantiate the credentials class. Find usage in the {@link Credentials} constructor
- */
-export interface CredentialsOptions {
-    /**
-     * If not provided then the constant **IDP_TOKEN_URL** will be used instead
-     */
-    idpTokenUrl?: string;
-    guardTime?: number;
-}
-/**
  * Base abstract CredentialS class
  */
 export declare abstract class Credentials implements PancloudClass {
@@ -38,3 +28,4 @@ export declare abstract class Credentials implements PancloudClass {
      */
     abstract retrieveAccessToken(): Promise<void>;
 }
+export declare function defaultCredentialsFactory(accessToken: string): Credentials;

@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 var credentials_1 = require("./credentials");
 exports.Credentials = credentials_1.Credentials;
+exports.defaultCredentialsFactory = credentials_1.defaultCredentialsFactory;
 var devtokencredentials_1 = require("./devtokencredentials");
 exports.DevTokenCredentials = devtokencredentials_1.DevTokenCredentials;
 var autocredentials_1 = require("./autocredentials");
@@ -23,7 +24,7 @@ var util_1 = require("./util");
 exports.Util = util_1.Util;
 var credentialprovider_1 = require("./credentialprovider");
 exports.CortexCredentialProvider = credentialprovider_1.CortexCredentialProvider;
-exports.defaultCredentialsFactory = credentialprovider_1.defaultCredentialsFactory;
+exports.defaultCredentialsProviderFactory = credentialprovider_1.defaultCredentialsProviderFactory;
 exports.isCredentialItem = credentialprovider_1.isCredentialItem;
 var fscredentialprovider_1 = require("./fscredentialprovider");
 exports.fsCredentialsFactory = fscredentialprovider_1.fsCredentialsFactory;
