@@ -15,27 +15,43 @@ import { commonLogger, PancloudClass } from './common'
 import { PanCloudError } from './error'
 import { Credentials } from './credentials'
 import { env } from 'process'
-import { CortexCredentialProvider, CredentialProviderOptions, CredentialsItem, isCredentialItem } from './credentialprovider'
+import { CortexCredentialProvider, CredentialProviderOptions, CredentialsItem, isCredentialItem, CortexClientParams } from './credentialprovider'
 import { createCipheriv, createDecipheriv, createHash } from 'crypto'
 import * as fs from 'fs'
 
-interface ConfigFile {
+interface ConfigFile<T> {
+    stateSequence: number
     credentialItems: { [dlid: string]: CredentialsItem },
     refreshTokens: { [dlid: string]: string }
+    authRequests: {
+        [state: string]: {
+            datalakeId: string,
+            clientParams: CortexClientParams<T>
+        }
+    }
 }
 
-function isConfigFile(obj: any): obj is ConfigFile {
+function isConfigFile<T>(obj: any): obj is ConfigFile<T> {
     return typeof obj == 'object' &&
+        obj.stateSequence && typeof obj.stateSequence == 'number' &&
+        obj.authRequests && typeof obj.authRequests == 'object' &&
         obj.credentialItems && typeof obj.credentialItems == 'object' &&
         Object.entries(obj.credentialItems).every(v => typeof v[0] == 'string' && isCredentialItem(v[1])) &&
         obj.refreshTokens && typeof obj.refreshTokens == 'object' &&
         Object.entries(obj.refreshTokens).every(v => typeof v[0] == 'string' && typeof v[1] == 'string')
 }
 
-class FsCredProvider extends CortexCredentialProvider {
+class FsCredProvider<T> extends CortexCredentialProvider<T> {
     private key: ArrayBufferView
     private iv: ArrayBufferView
     private configFileName: string
+    private seqno: number
+    private authRequests: {
+        [state: string]: {
+            datalakeId: string,
+            clientParams: CortexClientParams<T>
+        }
+    }
     className = 'FsCredProvider'
 
     constructor(ops: CredentialProviderOptions &
@@ -48,8 +64,10 @@ class FsCredProvider extends CortexCredentialProvider {
     }
 
     private async fullSync(): Promise<void> {
-        let configFile: ConfigFile = {
+        let configFile: ConfigFile<T> = {
+            stateSequence: this.seqno,
             credentialItems: this.credentials,
+            authRequests: this.authRequests,
             refreshTokens: {}
         }
         Object.entries(this.credentialsRefreshToken).forEach(v => {
@@ -107,7 +125,7 @@ class FsCredProvider extends CortexCredentialProvider {
         return this.fullSync()
     }
 
-    private async loadConfigFile(): Promise<ConfigFile> {
+    private async loadConfigFile(): Promise<ConfigFile<T>> {
         let jsonConfig: any
         try {
             let configFile = await promifyFs<Buffer>(this, fs.readFile, this.configFileName)
@@ -115,9 +133,11 @@ class FsCredProvider extends CortexCredentialProvider {
         } catch (e) {
             throw PanCloudError.fromError(this, e)
         }
-        if (!isConfigFile(jsonConfig)) {
+        if (!isConfigFile<T>(jsonConfig)) {
             throw new PanCloudError(this, 'PARSER', `Invalid configuration file format in ${this.configFileName}`)
         }
+        this.seqno = jsonConfig.stateSequence
+        this.authRequests = jsonConfig.authRequests
         return jsonConfig
     }
 
@@ -127,6 +147,31 @@ class FsCredProvider extends CortexCredentialProvider {
         return configFile.credentialItems
     }
 
+    protected async requestAuthState(datalakeId: string, clientParams: CortexClientParams<T>): Promise<string> {
+        let newRequestState = (this.seqno++).toString()
+        this.authRequests[newRequestState] = {
+            datalakeId: datalakeId,
+            clientParams: clientParams
+        }
+        await this.fullSync()
+        commonLogger.info(this, `Stored new auth request for datalakeId ${datalakeId}. Provided state ${newRequestState}`)
+        return newRequestState
+    }
+
+    protected restoreAuthState(state: string): Promise<{ datalakeId: string; clientParams: CortexClientParams<T> }> {
+        if (!this.authRequests[state]) {
+            throw new PanCloudError(this, 'CONFIG', `Unknown authentication state ${state}`)
+        }
+        commonLogger.info(this, `Returning authentication state ${state}`)
+        return Promise.resolve(this.authRequests[state])
+    }
+
+    protected deleteAuthState(state: string): Promise<void> {
+        delete this.authRequests[state]
+        commonLogger.info(this, `Deleted auth request state ${state} from storage with a full sync`)
+        return this.fullSync()
+    }
+
     protected credentialsObjectFactory(datalakeId: string, accTokenGuardTime: number,
         prefetch?: { accessToken: string, validUntil: number }): Promise<Credentials> {
         return this.defaultCredentialsObjectFactory(datalakeId, accTokenGuardTime, prefetch)
@@ -134,10 +179,10 @@ class FsCredProvider extends CortexCredentialProvider {
 }
 
 const ENV_PREFIX = 'PAN'
-const CONFIG_FILE = 'pancloud_config.js'
+const CONFIG_FILE = 'PANCLOUD_CONFIG.json'
 
-export async function fsCredentialsFactory(ops: CredentialProviderOptions &
-{ envPrefix?: string, clientId?: string, clientSecret?: string, secret: string }): Promise<FsCredProvider> {
+export async function fsCredentialsFactory<T>(ops: CredentialProviderOptions &
+{ envPrefix?: string, clientId?: string, clientSecret?: string, secret: string }): Promise<FsCredProvider<T>> {
     let { key, iv } = passIvGenerator(ops.secret)
     let ePrefix = (ops && ops.envPrefix) ? ops.envPrefix : ENV_PREFIX
     let envClientId = `${ePrefix}_MASTER_CLIENTID`
@@ -147,19 +192,21 @@ export async function fsCredentialsFactory(ops: CredentialProviderOptions &
         throw new PanCloudError({ className: 'DefaultCredentialsProvider' }, 'CONFIG',
             `Environment variable ${envClientId} not found or empty value`)
     }
-    commonLogger.info({ className: "defaultCredentialsFactory" }, `Got 'client_id' from environment variable ${envClientId}`)
+    commonLogger.info({ className: "defaultCredentialsFactory" }, `Got 'client_id'`)
     let cSec = (ops && ops.clientSecret) ? ops.clientSecret : env[envClientSecret]
     if (!cSec) {
         throw new PanCloudError({ className: 'DefaultCredentialsProvider' }, 'CONFIG',
             `Environment variable ${envClientSecret} not found or empty value`)
     }
-    commonLogger.info({ className: "defaultCredentialsFactory" }, `Got 'client_secret' from environment variable ${envClientSecret}`)
+    commonLogger.info({ className: "defaultCredentialsFactory" }, `Got 'client_secret'`)
     let configFileName = `${ePrefix}_${CONFIG_FILE}`
     try {
         await promifyFs<fs.Stats>(this, fs.stat, configFileName)
     } catch (e) {
         commonLogger.info({ className: 'fsCredProvider' }, `${configFileName} does not exist. Creating it`)
-        let blankConfig: ConfigFile = {
+        let blankConfig: ConfigFile<T> = {
+            stateSequence: Math.floor(Date.now() * Math.random()),
+            authRequests: {},
             credentialItems: {},
             refreshTokens: {}
         }

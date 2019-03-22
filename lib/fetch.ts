@@ -64,15 +64,15 @@ export function fetch(url: string, ops: FetchOptions): Promise<FetchResponse> {
 
     return new Promise((resolve, reject) => {
         let cRequest = request(rOps, resp => {
-            if (resp.statusCode && (resp.statusCode < 200 || resp.statusCode > 299)) {
-                resolve(FetchResponse.response(false, undefined, resp.statusCode))
-            }
             let data = '';
             resp.on('data', chunk => {
                 data += chunk;
             });
             resp.on('end', () => {
-                resolve(FetchResponse.response(true, data));
+                resolve(FetchResponse.response(
+                    !(resp.statusCode && (resp.statusCode < 200 || resp.statusCode > 299)),
+                    data,
+                    resp.statusCode));
             });
         }).on("error", err => {
             reject(Error(err.message))

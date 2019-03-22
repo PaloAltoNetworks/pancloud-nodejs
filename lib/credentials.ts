@@ -7,17 +7,6 @@ import { PancloudClass, commonLogger } from './common'
 import { PanCloudError } from './error';
 
 /**
- * Configuration options to instantiate the credentials class. Find usage in the {@link Credentials} constructor
- */
-export interface CredentialsOptions {
-    /**
-     * If not provided then the constant **IDP_TOKEN_URL** will be used instead
-     */
-    idpTokenUrl?: string,
-    guardTime?: number
-}
-
-/**
  * Base abstract CredentialS class 
  */
 export abstract class Credentials implements PancloudClass {
@@ -80,4 +69,35 @@ export abstract class Credentials implements PancloudClass {
      * Triggers an access token refresh request
      */
     public async abstract retrieveAccessToken(): Promise<void>
+}
+
+class StaticCredentials extends Credentials {
+    constructor(accessToken: string) {
+        super()
+        this.className = 'StaticCredentials'
+        let parts = accessToken.split('.')
+        if (parts.length != 3) {
+            throw new PanCloudError(this, 'CONFIG', 'not a valid JWT access token')
+        }
+        let validUntil = 0
+        try {
+            let claim = JSON.parse(Buffer.from(parts[1], 'base64').toString())
+            if (!(claim.exp && typeof claim.exp == 'number')) {
+                throw new PanCloudError(this, 'CONFIG', `JWT claim does not include "exp" field (${parts[1]})`)
+            }
+            validUntil = claim.exp
+        } catch (e) {
+            throw new PanCloudError(this, 'PARSER', 'Unable to decode the JWT access token')
+        }
+        this.setAccessToken(accessToken, validUntil)
+    }
+
+    retrieveAccessToken(): Promise<void> {
+        commonLogger.info(this, 'This is a static credentials class. Do not support refresh operations.')
+        return Promise.resolve()
+    }
+}
+
+export function defaultCredentialsFactory(accessToken: string): Credentials {
+    return new StaticCredentials(accessToken)
 }

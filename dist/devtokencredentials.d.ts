@@ -1,5 +1,5 @@
-import { Credentials, CredentialsOptions } from './credentials';
-export interface DevTokenCredentialsOptions extends CredentialsOptions {
+import { Credentials } from './credentials';
+export interface DevTokenCredentialsOptions {
     /**
      * Environmental variable containing the Developer Token string
      */
@@ -16,6 +16,7 @@ export interface DevTokenCredentialsOptions extends CredentialsOptions {
      * Developer Token string
      */
     developerToken?: string;
+    guardTime?: number;
 }
 export declare class DevTokenCredentials extends Credentials {
     private developerToken;

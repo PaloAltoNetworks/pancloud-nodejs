@@ -1,12 +1,12 @@
-import { defaultCredentialsFactory, CredentialProviderOptions } from './credentialprovider'
+import { defaultCredentialsProviderFactory, CredentialProviderOptions } from './credentialprovider'
 import { DevTokenCredentialsOptions, DevTokenCredentials } from './devtokencredentials'
-import { Credentials } from './credentials';
+import { Credentials, defaultCredentialsFactory } from './credentials';
 import { commonLogger } from './common'
 import { PanCloudError } from './error'
 
-export async function autoCredentials(opt?: CredentialProviderOptions & DevTokenCredentialsOptions): Promise<Credentials> {
+export async function autoCredentials(opt?: CredentialProviderOptions & DevTokenCredentialsOptions & { accessToken?: string }): Promise<Credentials> {
     try {
-        return await defaultCredentialsFactory(opt)
+        return await defaultCredentialsProviderFactory(opt)
     }
     catch (e) {
         commonLogger.info({ className: 'AutoCredentials' }, `Failed to instantiate Default Credential class with message ${(e as Error).message}`)
@@ -17,6 +17,13 @@ export async function autoCredentials(opt?: CredentialProviderOptions & DevToken
         return devTokCredentias
     } catch (e) {
         commonLogger.info({ className: 'AutoCredentials' }, `Failed to instantiate DevTokenCredentials class with message ${(e as Error).message}`)
+    }
+    if (opt && opt.accessToken) {
+        try {
+            return defaultCredentialsFactory(opt.accessToken)
+        } catch (e) {
+            commonLogger.info({ className: 'AutoCredentials' }, `Failed to instantiate Static Credential class with message ${(e as Error).message}`)
+        }
     }
     throw new PanCloudError({ className: 'AutoCredentials' }, 'PARSER', 'Unable to instantiate a Credentials class')
 }

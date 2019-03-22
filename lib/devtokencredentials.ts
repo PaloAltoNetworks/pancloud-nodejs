@@ -1,6 +1,6 @@
 import { env } from 'process'
 import { fetch } from './fetch'
-import { Credentials, CredentialsOptions } from './credentials'
+import { Credentials } from './credentials'
 import { retrier, expTokenExtractor } from './common'
 import { PanCloudError } from './error'
 
@@ -17,7 +17,7 @@ function isApexResponse(obj: any): obj is ApexResponse {
         obj.access_token && typeof obj.access_token == 'string'
 }
 
-export interface DevTokenCredentialsOptions extends CredentialsOptions {
+export interface DevTokenCredentialsOptions {
     /**
      * Environmental variable containing the Developer Token string
      */
@@ -33,7 +33,8 @@ export interface DevTokenCredentialsOptions extends CredentialsOptions {
     /**
      * Developer Token string
      */
-    developerToken?: string
+    developerToken?: string,
+    guardTime?: number
 }
 
 export class DevTokenCredentials extends Credentials {

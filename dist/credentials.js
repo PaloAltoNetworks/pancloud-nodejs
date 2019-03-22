@@ -58,3 +58,33 @@ class Credentials {
     }
 }
 exports.Credentials = Credentials;
+class StaticCredentials extends Credentials {
+    constructor(accessToken) {
+        super();
+        this.className = 'StaticCredentials';
+        let parts = accessToken.split('.');
+        if (parts.length != 3) {
+            throw new error_1.PanCloudError(this, 'CONFIG', 'not a valid JWT access token');
+        }
+        let validUntil = 0;
+        try {
+            let claim = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+            if (!(claim.exp && typeof claim.exp == 'number')) {
+                throw new error_1.PanCloudError(this, 'CONFIG', `JWT claim does not include "exp" field (${parts[1]})`);
+            }
+            validUntil = claim.exp;
+        }
+        catch (e) {
+            throw new error_1.PanCloudError(this, 'PARSER', 'Unable to decode the JWT access token');
+        }
+        this.setAccessToken(accessToken, validUntil);
+    }
+    retrieveAccessToken() {
+        common_1.commonLogger.info(this, 'This is a static credentials class. Do not support refresh operations.');
+        return Promise.resolve();
+    }
+}
+function defaultCredentialsFactory(accessToken) {
+    return new StaticCredentials(accessToken);
+}
+exports.defaultCredentialsFactory = defaultCredentialsFactory;

@@ -36,6 +36,10 @@ const LTYPES = {
     "tms.threat": "",
     "tms.traps": ""
 };
+exports.region2EntryPoint = {
+    'americas': 'https://api.us.paloaltonetworks.com',
+    'europe': 'https://api.eu.paloaltonetworks.com'
+};
 function isKnownLogType(t) {
     return LTYPES.hasOwnProperty(t);
 }
