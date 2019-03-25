@@ -1,7 +1,5 @@
 import { autoCredentials, EventService, EsFilterBuilderCfg, LogLevel } from 'pancloud-nodejs'
 
-const entryPoint = "https://api.us.paloaltonetworks.com"
-
 let builderCfg: EsFilterBuilderCfg = {
     filter: [
         { table: "panw.traffic", timeout: 1000, batchSize: 8000 },
@@ -16,10 +14,7 @@ let builderCfg: EsFilterBuilderCfg = {
  */
 export async function main(): Promise<void> {
     let c = await autoCredentials()
-    let es = await EventService.factory(entryPoint, {
-        credential: c,
-        // level: LogLevel.DEBUG
-    })
+    let es = await EventService.factory(c)
     await es.filterBuilder(builderCfg)
     console.log('Successfully set a new filter')
 }

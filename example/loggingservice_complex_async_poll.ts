@@ -1,6 +1,5 @@
 import { autoCredentials, EventService, EsFilterBuilderCfg, LoggingService, LsQueryCfg, EmitterInterface, LogLevel } from 'pancloud-nodejs'
 
-const entryPoint = "https://api.us.paloaltonetworks.com"
 let now = Math.floor(Date.now() / 1000)
 let es: EventService
 
@@ -50,18 +49,10 @@ export async function main(): Promise<void> {
         })
      */
     let c = await autoCredentials()
-    es = await EventService.factory(entryPoint, {
-        credential: c,
-        fetchTimeout: 45000
-        // level: LogLevel.DEBUG
-    })
+    es = await EventService.factory(c, { fetchTimeout: 45000 })
     await es.filterBuilder(builderCfg)
     console.log("Successfully started the Event Service notifier")
-    let ls = await LoggingService.factory(entryPoint, {
-        credential: c,
-        fetchTimeout: 45000
-        // level: LogLevel.DEBUG
-    })
+    let ls = await LoggingService.factory(c, { fetchTimeout: 45000 })
     let job1 = ls.query(query1) // Schedule query 1 and register the receiver
     let job2 = ls.query(query2) // Schedule query 2 with no additional registration
     try {

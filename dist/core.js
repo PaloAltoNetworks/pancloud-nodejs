@@ -1,4 +1,16 @@
 "use strict";
+// Copyright 2015-2019 Palo Alto Networks, Inc
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//       http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
  * Implements the abstract coreClass that implements common methods for higher-end classes like Event Service
@@ -14,18 +26,19 @@ const common_1 = require("./common");
 class CoreClass {
     /**
      *
+     * @param cred credentials object instance that will provide the needed JWT access_token
      * @param ops configuration options for this instance
      */
-    constructor(baseUrl, ops) {
+    constructor(cred, basePath, ops) {
         this.className = "coreClass";
-        this.cred = ops.credential;
-        this.baseUrl = baseUrl;
-        if (ops.level != undefined && ops.level != common_1.LogLevel.INFO) {
+        this.cred = cred;
+        this.baseUrl = new URL(basePath, cred.getEntryPoint()).toString();
+        if (ops && ops.level != undefined && ops.level != common_1.LogLevel.INFO) {
             common_1.commonLogger.level = ops.level;
         }
-        this.retrierCount = ops.retrierCount;
-        this.retrierDelay = ops.retrierDelay;
-        this.fetchTimeout = ops.fetchTimeout;
+        this.retrierCount = (ops) ? ops.retrierCount : undefined;
+        this.retrierDelay = (ops) ? ops.retrierDelay : undefined;
+        this.fetchTimeout = (ops) ? ops.fetchTimeout : undefined;
         this.stats = {
             apiTransactions: 0
         };

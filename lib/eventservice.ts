@@ -1,3 +1,16 @@
+// Copyright 2015-2019 Palo Alto Networks, Inc
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//       http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 /**
  * High level abstraction of the Application Framework Event Service
  */
@@ -7,12 +20,13 @@ import { ApiPath, LogType, isKnownLogType, commonLogger, EntryPoint } from './co
 import { Emitter, EmitterOptions, EmitterInterface, EmitterStats, L2correlation } from './emitter'
 import { PanCloudError } from './error'
 import { setTimeout, clearTimeout } from 'timers'
+import { Credentials } from './credentials';
 
 /**
  * Default amount of milliseconds to wait between ES AutoPoll events
  */
 const MSLEEP = 200;
-const esPath: ApiPath = "event-service/v1/channels"
+const ESPATH: ApiPath = "event-service/v1/channels"
 
 /**
  * Default Event Server {@link esPollOptions} options
@@ -284,13 +298,17 @@ export class EventService extends Emitter implements Iterable<Promise<EsEvent[]>
     private eevent: EmitterInterface<any[]>
     protected stats: EsStats
 
-    private constructor(baseUrl: string, ops: EsOptions) {
-        super(baseUrl, ops)
+    /**
+     * Private constructor. Use the class's static `factory()` method instead
+     */
+    private constructor(cred: Credentials, baseUrl: string, ops?: EsOptions) {
+        super(cred, baseUrl, ops)
         this.className = "EventService"
-        if (!ops.channelId) { ops.channelId = 'EventFilter' }
-        this.setChannel(ops.channelId)
+        let channelId = 'EventFilter'
+        if (ops && ops.channelId) { channelId = ops.channelId }
+        this.setChannel(channelId)
         this.popts = DEFAULT_PO
-        this.apSleep = (ops.autoPollSleep) ? ops.autoPollSleep : MSLEEP
+        this.apSleep = (ops && ops.autoPollSleep) ? ops.autoPollSleep : MSLEEP
         this.polling = false
         this.eevent = { source: "EventService" }
         this.stats = {
@@ -315,13 +333,13 @@ export class EventService extends Emitter implements Iterable<Promise<EsEvent[]>
 
     /**
      * Static factory method to instantiate an Event Service object
-     * @param entryPoint a **string** containing a valid Application Framework API URL
+     * @param cred the **Credentials** object that will be used to obtain JWT access tokens
      * @param esOps a valid **EsOptions** configuration objet
      * @returns an instantiated **EventService** object
      */
-    static factory(entryPoint: EntryPoint, esOps: EsOptions): EventService {
-        commonLogger.info({ className: 'EventService' }, `Creating new EventService object for entryPoint ${entryPoint}`)
-        return new EventService(new URL(esPath, entryPoint).toString(), esOps)
+    static factory(cred: Credentials, esOps?: EsOptions): EventService {
+        commonLogger.info({ className: 'EventService' }, `Creating new EventService object for entryPoint ${cred.getEntryPoint()}`)
+        return new EventService(cred, ESPATH, esOps)
     }
 
     /**

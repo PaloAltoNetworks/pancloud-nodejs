@@ -1,7 +1,18 @@
 "use strict";
+// Copyright 2015-2019 Palo Alto Networks, Inc
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//       http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 Object.defineProperty(exports, "__esModule", { value: true });
 const common_1 = require("./common");
-const url_1 = require("url");
 const core_1 = require("./core");
 const exceptions_1 = require("./exceptions");
 const DSS_PATH = "directory-sync-service/v1";
@@ -56,19 +67,19 @@ class DirectorySyncService extends core_1.CoreClass {
     /**
      * Constructor is private. Use the **DirectorySyncService.factory()** method instead
      */
-    constructor(entryPoint, ops) {
-        super(entryPoint, ops);
+    constructor(cred, basePath, ops) {
+        super(cred, basePath, ops);
         this.className = "DirectorySyncService";
         this.stats = Object.assign({ queryCalls: 0, domainCalls: 0, attributeCalls: 0, countCalls: 0 }, this.stats);
     }
     /**
      * Factory method to return an instantiated **DirectorySyncService** object
-     * @param entryPoint a **string** with a valid entry point to the Application Framework API (US/EU)
+     * @param cred the credentials object that will provide the JWT access tokens
      * @param ops configuration object
      */
-    static async factory(entryPoint, ops) {
-        common_1.commonLogger.info({ className: 'DirectorySyncService' }, `Creating new DirectorySyncService object for entryPoint ${entryPoint}`);
-        return new DirectorySyncService(new url_1.URL(DSS_PATH, entryPoint).toString(), ops);
+    static async factory(cred, ops) {
+        common_1.commonLogger.info({ className: 'DirectorySyncService' }, `Creating new DirectorySyncService object for entryPoint ${cred.getEntryPoint()}`);
+        return new DirectorySyncService(cred, DSS_PATH, ops);
     }
     async fetcher(path, checker, action, query) {
         let res;

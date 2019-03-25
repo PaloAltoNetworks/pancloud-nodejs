@@ -1,5 +1,5 @@
-import { EntryPoint } from "./common";
 import { CoreClass, CoreOptions, CoreStats } from "./core";
+import { Credentials } from "./credentials";
 interface DssDomain {
     /**
      * domain in distinguished name format
@@ -165,10 +165,10 @@ export declare class DirectorySyncService extends CoreClass {
     private constructor();
     /**
      * Factory method to return an instantiated **DirectorySyncService** object
-     * @param entryPoint a **string** with a valid entry point to the Application Framework API (US/EU)
+     * @param cred the credentials object that will provide the JWT access tokens
      * @param ops configuration object
      */
-    static factory(entryPoint: EntryPoint, ops: DssOptions): Promise<DirectorySyncService>;
+    static factory(cred: Credentials, ops?: DssOptions): Promise<DirectorySyncService>;
     private fetcher;
     /**
      * Get Directory Attribute Map

@@ -4,10 +4,7 @@ const entryPoint = "https://api.us.paloaltonetworks.com"
 
 export async function main(): Promise<void> {
     let c = await autoCredentials()
-    let dss = await DirectorySyncService.factory(entryPoint, {
-        credential: c
-        // level: logLevel.DEBUG
-    })
+    let dss = await DirectorySyncService.factory(c)
     let containers = await dss.query('containers')
     console.log(`Sucessfully Received ${containers.count} container objects`)
     containers.result.forEach(x => {

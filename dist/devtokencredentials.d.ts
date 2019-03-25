@@ -1,4 +1,5 @@
 import { Credentials } from './credentials';
+import { EntryPoint } from './common';
 export interface DevTokenCredentialsOptions {
     /**
      * Environmental variable containing the Developer Token string
@@ -16,6 +17,7 @@ export interface DevTokenCredentialsOptions {
      * Developer Token string
      */
     developerToken?: string;
+    entryPoint?: EntryPoint;
     guardTime?: number;
 }
 export declare class DevTokenCredentials extends Credentials {

@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { commonLogger, PancloudClass } from './common'
+import { commonLogger, PancloudClass, EntryPoint } from './common'
 import { PanCloudError } from './error'
 import { Credentials } from './credentials'
 import { env } from 'process'
@@ -21,8 +21,7 @@ import * as fs from 'fs'
 
 interface ConfigFile<T> {
     stateSequence: number
-    credentialItems: { [dlid: string]: CredentialsItem },
-    refreshTokens: { [dlid: string]: string }
+    credentialItems: { [dlid: string]: CredentialsItem }
     authRequests: {
         [state: string]: {
             datalakeId: string,
@@ -34,11 +33,8 @@ interface ConfigFile<T> {
 function isConfigFile<T>(obj: any): obj is ConfigFile<T> {
     return typeof obj == 'object' &&
         obj.stateSequence && typeof obj.stateSequence == 'number' &&
-        obj.authRequests && typeof obj.authRequests == 'object' &&
         obj.credentialItems && typeof obj.credentialItems == 'object' &&
-        Object.entries(obj.credentialItems).every(v => typeof v[0] == 'string' && isCredentialItem(v[1])) &&
-        obj.refreshTokens && typeof obj.refreshTokens == 'object' &&
-        Object.entries(obj.refreshTokens).every(v => typeof v[0] == 'string' && typeof v[1] == 'string')
+        Object.entries(obj.credentialItems).every(v => typeof v[0] == 'string' && isCredentialItem(v[1]))
 }
 
 class FsCredProvider<T> extends CortexCredentialProvider<T> {
@@ -67,47 +63,17 @@ class FsCredProvider<T> extends CortexCredentialProvider<T> {
         let configFile: ConfigFile<T> = {
             stateSequence: this.seqno,
             credentialItems: this.credentials,
-            authRequests: this.authRequests,
-            refreshTokens: {}
+            authRequests: this.authRequests
         }
-        Object.entries(this.credentialsRefreshToken).forEach(v => {
+        Object.entries(this.credentials).forEach(v => {
             let aes = createCipheriv('aes128', this.key, this.iv)
-            let payload = Buffer.concat([aes.update(Buffer.from(v[1], 'utf8')), aes.final()]).toString('base64')
-            configFile.refreshTokens[v[0]] = payload
+            let payload = Buffer.concat([aes.update(Buffer.from(v[1].refreshToken, 'utf8')), aes.final()]).toString('base64')
+            configFile.credentialItems[v[0]].refreshToken = payload
+            aes = createCipheriv('aes128', this.key, this.iv)
+            payload = Buffer.concat([aes.update(Buffer.from(v[1].accessToken, 'utf8')), aes.final()]).toString('base64')
+            configFile.credentialItems[v[0]].accessToken = payload
         })
         await promifyFs(this, fs.writeFile, this.configFileName, JSON.stringify(configFile, undefined, ' '))
-    }
-
-    protected createCortexRefreshToken(datalakeId: string, refreshToken: string): Promise<void> {
-        commonLogger.info(this, `Lazy implementation of CREATE refresh token request for datalake ${datalakeId} with a full synch operation`)
-        return this.fullSync()
-    }
-
-    protected updateCortexRefreshToken(datalakeId: string, refreshToken: string): Promise<void> {
-        commonLogger.info(this, `Lazy implementation of UPDATE refresh token request for datalake ${datalakeId} with a full synch operation`)
-        return this.fullSync()
-    }
-
-    protected deleteCortexRefreshToken(datalakeId: string): Promise<void> {
-        commonLogger.info(this, `Lazy implementation of DELETE refresh token request for datalake ${datalakeId} with a full synch operation`)
-        return this.fullSync()
-    }
-
-    protected async retrieveCortexRefreshToken(datalakeId: string): Promise<string> {
-        let configFile = await this.loadConfigFile()
-        let cryptedRefreshToken = configFile.refreshTokens[datalakeId]
-        if (!cryptedRefreshToken) {
-            throw new PanCloudError(this, 'CONFIG', `Refresh token for datalake ${datalakeId} not found in configuration file ${this.configFileName}`)
-        }
-        let decr = createDecipheriv('aes128', this.key, this.iv)
-        let refreshToken = ''
-        try {
-            refreshToken = Buffer.concat([decr.update(Buffer.from(cryptedRefreshToken, 'base64')), decr.final()]).toString('utf8')
-        } catch {
-            throw new PanCloudError(this, 'PARSER', `Unable to decipher the refresh token for datalake ${datalakeId}. Wrong secret?`)
-        }
-        commonLogger.info(this, `Successfully retrieved the refresh token for datalake id ${datalakeId} from the configuration file ${this.configFileName}`)
-        return refreshToken
     }
 
     protected createCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem): Promise<void> {
@@ -125,7 +91,7 @@ class FsCredProvider<T> extends CortexCredentialProvider<T> {
         return this.fullSync()
     }
 
-    private async loadConfigFile(): Promise<ConfigFile<T>> {
+    protected async loadCredentialsDb(): Promise<{ [dlid: string]: CredentialsItem }> {
         let jsonConfig: any
         try {
             let configFile = await promifyFs<Buffer>(this, fs.readFile, this.configFileName)
@@ -136,15 +102,18 @@ class FsCredProvider<T> extends CortexCredentialProvider<T> {
         if (!isConfigFile<T>(jsonConfig)) {
             throw new PanCloudError(this, 'PARSER', `Invalid configuration file format in ${this.configFileName}`)
         }
+        Object.entries(jsonConfig.credentialItems).forEach(v => {
+            let aes = createDecipheriv('aes128', this.key, this.iv)
+            let payload = Buffer.concat([aes.update(Buffer.from(v[1].refreshToken, 'base64')), aes.final()]).toString('utf8')
+            jsonConfig.credentialItems[v[0]].refreshToken = payload
+            aes = createDecipheriv('aes128', this.key, this.iv)
+            payload = Buffer.concat([aes.update(Buffer.from(v[1].accessToken, 'base64')), aes.final()]).toString('utf8')
+            jsonConfig.credentialItems[v[0]].accessToken = payload
+        })
+        commonLogger.info(this, `Loaded ${Object.keys(jsonConfig.credentialItems).length} entities from the configuration file ${this.configFileName}`)
         this.seqno = jsonConfig.stateSequence
         this.authRequests = jsonConfig.authRequests
-        return jsonConfig
-    }
-
-    protected async loadCredentialsDb(): Promise<{ [dlid: string]: CredentialsItem }> {
-        let configFile = await this.loadConfigFile()
-        commonLogger.info(this, `Loaded ${Object.keys(configFile.credentialItems).length} entities from the configuration file ${this.configFileName}`)
-        return configFile.credentialItems
+        return jsonConfig.credentialItems
     }
 
     protected async requestAuthState(datalakeId: string, clientParams: CortexClientParams<T>): Promise<string> {
@@ -172,9 +141,9 @@ class FsCredProvider<T> extends CortexCredentialProvider<T> {
         return this.fullSync()
     }
 
-    protected credentialsObjectFactory(datalakeId: string, accTokenGuardTime: number,
+    protected credentialsObjectFactory(datalakeId: string, entryPoint: EntryPoint, accTokenGuardTime: number,
         prefetch?: { accessToken: string, validUntil: number }): Promise<Credentials> {
-        return this.defaultCredentialsObjectFactory(datalakeId, accTokenGuardTime, prefetch)
+        return this.defaultCredentialsObjectFactory(datalakeId, entryPoint, accTokenGuardTime, prefetch)
     }
 }
 
@@ -207,8 +176,7 @@ export async function fsCredentialsFactory<T>(ops: CredentialProviderOptions &
         let blankConfig: ConfigFile<T> = {
             stateSequence: Math.floor(Date.now() * Math.random()),
             authRequests: {},
-            credentialItems: {},
-            refreshTokens: {}
+            credentialItems: {}
         }
         await promifyFs<void>(this, fs.writeFile, configFileName, JSON.stringify(blankConfig))
     }

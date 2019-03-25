@@ -1,9 +1,20 @@
 "use strict";
+// Copyright 2015-2019 Palo Alto Networks, Inc
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//       http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+Object.defineProperty(exports, "__esModule", { value: true });
 /**
  * High level abstraction of the Application Framework Logging Service
  */
-Object.defineProperty(exports, "__esModule", { value: true });
-const url_1 = require("url");
 const common_1 = require("./common");
 const emitter_1 = require("./emitter");
 const error_1 = require("./error");
@@ -13,7 +24,7 @@ const timers_1 = require("timers");
  * function signature
  */
 const MSLEEP = 200;
-const lsPath = "logging-service/v1";
+const LSPATH = "logging-service/v1";
 const jStatus = {
     'RUNNING': '', 'FINISHED': '', 'JOB_FINISHED': '', 'JOB_FAILED': '', 'CANCELLED': ''
 };
@@ -56,11 +67,14 @@ function isWriteResult(obj) {
  * and async features. Objects of this class must be obtained using the factory static method
  */
 class LoggingService extends emitter_1.Emitter {
-    constructor(baseUrl, ops) {
-        super(baseUrl, ops);
+    /**
+     * Private constructor. Use the class's static `factory()` method instead
+     */
+    constructor(cred, baseUrl, ops) {
+        super(cred, baseUrl, ops);
         this.className = "LoggingService";
         this.eevent = { source: 'LoggingService' };
-        this.apSleep = (ops.autoPollSleep) ? ops.autoPollSleep : MSLEEP;
+        this.apSleep = (ops && ops.autoPollSleep) ? ops.autoPollSleep : MSLEEP;
         this.jobQueue = {};
         this.lastProcElement = 0;
         this.pendingQueries = [];
@@ -68,13 +82,13 @@ class LoggingService extends emitter_1.Emitter {
     }
     /**
      * Static factory method to instantiate an Event Service object
-     * @param entryPoint a **string** containing a valid Application Framework API URL
+     * @param cred the **Credentials** object that will be used to obtain JWT access tokens
      * @param lsOps a valid **LsOptions** configuration objet
      * @returns an instantiated **LoggingService** object
      */
-    static factory(entryPoint, lsOps) {
-        common_1.commonLogger.info({ className: 'LoggingService' }, `Creating new LoggingService object for entryPoint ${entryPoint}`);
-        return new LoggingService(new url_1.URL(lsPath, entryPoint).toString(), lsOps);
+    static factory(cred, lsOps) {
+        common_1.commonLogger.info({ className: 'LoggingService' }, `Creating new LoggingService object for entryPoint ${cred.getEntryPoint()}`);
+        return new LoggingService(cred, LSPATH, lsOps);
     }
     /**
      * Performs a Logging Service query call and returns a promise with the response.

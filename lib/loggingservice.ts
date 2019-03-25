@@ -1,19 +1,32 @@
+// Copyright 2015-2019 Palo Alto Networks, Inc
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//       http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 /**
  * High level abstraction of the Application Framework Logging Service
  */
 
-import { URL } from 'url'
-import { ApiPath, isKnownLogType, LogType, commonLogger, EntryPoint } from './common'
+import { ApiPath, isKnownLogType, LogType, commonLogger } from './common'
 import { Emitter, EmitterOptions, EmitterInterface, EmitterStats, L2correlation } from './emitter'
 import { PanCloudError, isSdkError, SdkErr } from './error'
 import { setTimeout } from 'timers';
+import { Credentials } from './credentials';
 
 /**
  * Default delay (in milliseconds) between successive polls (auto-poll feature). It can be overrided in the
  * function signature
  */
 const MSLEEP = 200;
-const lsPath: ApiPath = "logging-service/v1"
+const LSPATH: ApiPath = "logging-service/v1"
 const jStatus = {
     'RUNNING': '', 'FINISHED': '', 'JOB_FINISHED': '', 'JOB_FAILED': '', 'CANCELLED': ''
 }
@@ -222,11 +235,14 @@ export class LoggingService extends Emitter {
     private pendingQueries: string[]
     protected stats: LsStats
 
-    private constructor(baseUrl: string, ops: LsOptions) {
-        super(baseUrl, ops)
+    /**
+     * Private constructor. Use the class's static `factory()` method instead
+     */
+    private constructor(cred: Credentials, baseUrl: string, ops?: LsOptions) {
+        super(cred, baseUrl, ops)
         this.className = "LoggingService"
         this.eevent = { source: 'LoggingService' }
-        this.apSleep = (ops.autoPollSleep) ? ops.autoPollSleep : MSLEEP
+        this.apSleep = (ops && ops.autoPollSleep) ? ops.autoPollSleep : MSLEEP
         this.jobQueue = {}
         this.lastProcElement = 0
         this.pendingQueries = []
@@ -242,13 +258,13 @@ export class LoggingService extends Emitter {
 
     /**
      * Static factory method to instantiate an Event Service object
-     * @param entryPoint a **string** containing a valid Application Framework API URL
+     * @param cred the **Credentials** object that will be used to obtain JWT access tokens
      * @param lsOps a valid **LsOptions** configuration objet
      * @returns an instantiated **LoggingService** object
      */
-    static factory(entryPoint: EntryPoint, lsOps: LsOptions): LoggingService {
-        commonLogger.info({ className: 'LoggingService' }, `Creating new LoggingService object for entryPoint ${entryPoint}`)
-        return new LoggingService(new URL(lsPath, entryPoint).toString(), lsOps)
+    static factory(cred: Credentials, lsOps?: LsOptions): LoggingService {
+        commonLogger.info({ className: 'LoggingService' }, `Creating new LoggingService object for entryPoint ${cred.getEntryPoint()}`)
+        return new LoggingService(cred, LSPATH, lsOps)
     }
 
     /**

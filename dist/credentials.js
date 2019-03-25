@@ -1,16 +1,29 @@
 "use strict";
+// Copyright 2015-2019 Palo Alto Networks, Inc
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//       http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+Object.defineProperty(exports, "__esModule", { value: true });
 /**
  * credentials module implements a class to keep all Application Framework credentials operations
  * bound together.
  */
-Object.defineProperty(exports, "__esModule", { value: true });
 const common_1 = require("./common");
 const error_1 = require("./error");
 /**
  * Base abstract CredentialS class
  */
 class Credentials {
-    constructor(guardTime) {
+    constructor(entryPoint, guardTime) {
+        this.entryPoint = entryPoint;
         this.guardTime = (guardTime) ? guardTime : 300;
         this.className = "Credentials";
         if (this.guardTime > 3300) {
@@ -36,6 +49,9 @@ class Credentials {
         }
         return this.validUntil;
     }
+    getEntryPoint() {
+        return this.entryPoint;
+    }
     /**
      * Checks the access token expiration time and automaticaly refreshes it if going to expire
      * inside the next 5 minutes
@@ -59,8 +75,8 @@ class Credentials {
 }
 exports.Credentials = Credentials;
 class StaticCredentials extends Credentials {
-    constructor(accessToken) {
-        super();
+    constructor(entryPoint, accessToken) {
+        super(entryPoint);
         this.className = 'StaticCredentials';
         let parts = accessToken.split('.');
         if (parts.length != 3) {
@@ -84,7 +100,7 @@ class StaticCredentials extends Credentials {
         return Promise.resolve();
     }
 }
-function defaultCredentialsFactory(accessToken) {
-    return new StaticCredentials(accessToken);
+function defaultCredentialsFactory(entryPoint, accessToken) {
+    return new StaticCredentials(entryPoint, accessToken);
 }
 exports.defaultCredentialsFactory = defaultCredentialsFactory;

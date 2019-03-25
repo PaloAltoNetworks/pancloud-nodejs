@@ -1,9 +1,17 @@
 "use strict";
-/**
- * High level abstraction of the Application Framework Event Service
- */
+// Copyright 2015-2019 Palo Alto Networks, Inc
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//       http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 Object.defineProperty(exports, "__esModule", { value: true });
-const url_1 = require("url");
 const common_1 = require("./common");
 const emitter_1 = require("./emitter");
 const error_1 = require("./error");
@@ -12,7 +20,7 @@ const timers_1 = require("timers");
  * Default amount of milliseconds to wait between ES AutoPoll events
  */
 const MSLEEP = 200;
-const esPath = "event-service/v1/channels";
+const ESPATH = "event-service/v1/channels";
 /**
  * Default Event Server {@link esPollOptions} options
  */
@@ -54,15 +62,19 @@ function isEsFilter(obj) {
  * and async features. Objects of this class must be obtained using the factory static method
  */
 class EventService extends emitter_1.Emitter {
-    constructor(baseUrl, ops) {
-        super(baseUrl, ops);
+    /**
+     * Private constructor. Use the class's static `factory()` method instead
+     */
+    constructor(cred, baseUrl, ops) {
+        super(cred, baseUrl, ops);
         this.className = "EventService";
-        if (!ops.channelId) {
-            ops.channelId = 'EventFilter';
+        let channelId = 'EventFilter';
+        if (ops && ops.channelId) {
+            channelId = ops.channelId;
         }
-        this.setChannel(ops.channelId);
+        this.setChannel(channelId);
         this.popts = DEFAULT_PO;
-        this.apSleep = (ops.autoPollSleep) ? ops.autoPollSleep : MSLEEP;
+        this.apSleep = (ops && ops.autoPollSleep) ? ops.autoPollSleep : MSLEEP;
         this.polling = false;
         this.eevent = { source: "EventService" };
         this.stats = Object.assign({ acks: 0, nacks: 0, filtergets: 0, filtersets: 0, flushes: 0, polls: 0, records: 0 }, this.stats);
@@ -76,13 +88,13 @@ class EventService extends emitter_1.Emitter {
     }
     /**
      * Static factory method to instantiate an Event Service object
-     * @param entryPoint a **string** containing a valid Application Framework API URL
+     * @param cred the **Credentials** object that will be used to obtain JWT access tokens
      * @param esOps a valid **EsOptions** configuration objet
      * @returns an instantiated **EventService** object
      */
-    static factory(entryPoint, esOps) {
-        common_1.commonLogger.info({ className: 'EventService' }, `Creating new EventService object for entryPoint ${entryPoint}`);
-        return new EventService(new url_1.URL(esPath, entryPoint).toString(), esOps);
+    static factory(cred, esOps) {
+        common_1.commonLogger.info({ className: 'EventService' }, `Creating new EventService object for entryPoint ${cred.getEntryPoint()}`);
+        return new EventService(cred, ESPATH, esOps);
     }
     /**
      * @returns the current Event Service filter configuration

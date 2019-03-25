@@ -3,6 +3,7 @@ import { LogType } from './common';
 import { CoreClass, CoreOptions, CoreStats } from './core';
 import { MacCorrelator, CorrelationStats } from './l2correlator';
 import { EventEmitter } from 'events';
+import { Credentials } from './credentials';
 /**
  * coreClass supports "async operations". In this mode, events received by the Framework will be send to its
  * subscribers. Emitted events will be conformant to this interface.
@@ -116,7 +117,7 @@ export declare class Emitter extends CoreClass {
     protected l2engine: MacCorrelator;
     className: string;
     protected stats: EmitterStats;
-    protected constructor(baseUrl: string, ops: EmitterOptions);
+    protected constructor(cred: Credentials, baseUrl: string, ops?: EmitterOptions);
     private registerListener;
     private unregisterListener;
     /**

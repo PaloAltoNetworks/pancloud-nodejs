@@ -4,10 +4,7 @@ const entryPoint = "https://api.us.paloaltonetworks.com"
 
 export async function main(): Promise<void> {
     let c = await autoCredentials()
-    let dss = await DirectorySyncService.factory(entryPoint, {
-        credential: c
-        // level: LogLevel.DEBUG
-    })
+    let dss = await DirectorySyncService.factory(c)
     let users = await dss.query('users', {
         domain: "panwdomain",
         name: {

@@ -1,9 +1,23 @@
+// Copyright 2015-2019 Palo Alto Networks, Inc
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//       http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 import { LogType, commonLogger, LogLevel } from './common'
 import { CoreClass, CoreOptions, CoreStats } from './core'
 import { PanCloudError } from './error'
 import { MacCorrelator, CorrelatedEvent, CorrelationStats } from './l2correlator'
 import { EventEmitter } from 'events'
 import { Util } from './util'
+import { Credentials } from './credentials';
 
 const EVENT_EVENT = 'EVENT_EVENT'
 const PCAP_EVENT = 'PCAP_EVENT'
@@ -128,12 +142,12 @@ export class Emitter extends CoreClass {
     public className: string
     protected stats: EmitterStats
 
-    protected constructor(baseUrl: string, ops: EmitterOptions) {
-        super(baseUrl, ops)
+    protected constructor(cred: Credentials, baseUrl: string, ops?: EmitterOptions) {
+        super(cred, baseUrl, ops)
         this.className = "emitterClass"
-        this.allowDupReceiver = (ops.allowDup == undefined) ? false : ops.allowDup
+        this.allowDupReceiver = (ops && ops.allowDup !== undefined) ? ops.allowDup : false
         this.newEmitter()
-        if (ops.level != undefined && ops.level != LogLevel.INFO) {
+        if (ops && ops.level != undefined && ops.level != LogLevel.INFO) {
             commonLogger.level = ops.level
         }
         this.stats = {
@@ -142,7 +156,7 @@ export class Emitter extends CoreClass {
             pcapsEmitted: 0,
             ...this.stats
         }
-        if (ops.l2Corr) {
+        if (ops && ops.l2Corr) {
             this.l2enable = true
             this.l2engine = new MacCorrelator(
                 ops.l2Corr.timeWindow,
