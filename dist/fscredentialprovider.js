@@ -21,11 +21,8 @@ const fs = require("fs");
 function isConfigFile(obj) {
     return typeof obj == 'object' &&
         obj.stateSequence && typeof obj.stateSequence == 'number' &&
-        obj.authRequests && typeof obj.authRequests == 'object' &&
         obj.credentialItems && typeof obj.credentialItems == 'object' &&
-        Object.entries(obj.credentialItems).every(v => typeof v[0] == 'string' && credentialprovider_1.isCredentialItem(v[1])) &&
-        obj.refreshTokens && typeof obj.refreshTokens == 'object' &&
-        Object.entries(obj.refreshTokens).every(v => typeof v[0] == 'string' && typeof v[1] == 'string');
+        Object.entries(obj.credentialItems).every(v => typeof v[0] == 'string' && credentialprovider_1.isCredentialItem(v[1]));
 }
 class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
     constructor(ops) {
@@ -39,44 +36,17 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
         let configFile = {
             stateSequence: this.seqno,
             credentialItems: this.credentials,
-            authRequests: this.authRequests,
-            refreshTokens: {}
+            authRequests: this.authRequests
         };
-        Object.entries(this.credentialsRefreshToken).forEach(v => {
+        Object.entries(this.credentials).forEach(v => {
             let aes = crypto_1.createCipheriv('aes128', this.key, this.iv);
-            let payload = Buffer.concat([aes.update(Buffer.from(v[1], 'utf8')), aes.final()]).toString('base64');
-            configFile.refreshTokens[v[0]] = payload;
+            let payload = Buffer.concat([aes.update(Buffer.from(v[1].refreshToken, 'utf8')), aes.final()]).toString('base64');
+            configFile.credentialItems[v[0]].refreshToken = payload;
+            aes = crypto_1.createCipheriv('aes128', this.key, this.iv);
+            payload = Buffer.concat([aes.update(Buffer.from(v[1].accessToken, 'utf8')), aes.final()]).toString('base64');
+            configFile.credentialItems[v[0]].accessToken = payload;
         });
         await promifyFs(this, fs.writeFile, this.configFileName, JSON.stringify(configFile, undefined, ' '));
-    }
-    createCortexRefreshToken(datalakeId, refreshToken) {
-        common_1.commonLogger.info(this, `Lazy implementation of CREATE refresh token request for datalake ${datalakeId} with a full synch operation`);
-        return this.fullSync();
-    }
-    updateCortexRefreshToken(datalakeId, refreshToken) {
-        common_1.commonLogger.info(this, `Lazy implementation of UPDATE refresh token request for datalake ${datalakeId} with a full synch operation`);
-        return this.fullSync();
-    }
-    deleteCortexRefreshToken(datalakeId) {
-        common_1.commonLogger.info(this, `Lazy implementation of DELETE refresh token request for datalake ${datalakeId} with a full synch operation`);
-        return this.fullSync();
-    }
-    async retrieveCortexRefreshToken(datalakeId) {
-        let configFile = await this.loadConfigFile();
-        let cryptedRefreshToken = configFile.refreshTokens[datalakeId];
-        if (!cryptedRefreshToken) {
-            throw new error_1.PanCloudError(this, 'CONFIG', `Refresh token for datalake ${datalakeId} not found in configuration file ${this.configFileName}`);
-        }
-        let decr = crypto_1.createDecipheriv('aes128', this.key, this.iv);
-        let refreshToken = '';
-        try {
-            refreshToken = Buffer.concat([decr.update(Buffer.from(cryptedRefreshToken, 'base64')), decr.final()]).toString('utf8');
-        }
-        catch (_a) {
-            throw new error_1.PanCloudError(this, 'PARSER', `Unable to decipher the refresh token for datalake ${datalakeId}. Wrong secret?`);
-        }
-        common_1.commonLogger.info(this, `Successfully retrieved the refresh token for datalake id ${datalakeId} from the configuration file ${this.configFileName}`);
-        return refreshToken;
     }
     createCredentialsItem(datalakeId, credentialsItem) {
         common_1.commonLogger.info(this, `Lazy implementation of CREATE credentials request for datalake ${datalakeId} with a full synch operation`);
@@ -90,7 +60,7 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
         common_1.commonLogger.info(this, `Lazy implementation of DELETE credentials request for datalake ${datalakeId} with a full synch operation`);
         return this.fullSync();
     }
-    async loadConfigFile() {
+    async loadCredentialsDb() {
         let jsonConfig;
         try {
             let configFile = await promifyFs(this, fs.readFile, this.configFileName);
@@ -102,14 +72,18 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
         if (!isConfigFile(jsonConfig)) {
             throw new error_1.PanCloudError(this, 'PARSER', `Invalid configuration file format in ${this.configFileName}`);
         }
+        Object.entries(jsonConfig.credentialItems).forEach(v => {
+            let aes = crypto_1.createDecipheriv('aes128', this.key, this.iv);
+            let payload = Buffer.concat([aes.update(Buffer.from(v[1].refreshToken, 'base64')), aes.final()]).toString('utf8');
+            jsonConfig.credentialItems[v[0]].refreshToken = payload;
+            aes = crypto_1.createDecipheriv('aes128', this.key, this.iv);
+            payload = Buffer.concat([aes.update(Buffer.from(v[1].accessToken, 'base64')), aes.final()]).toString('utf8');
+            jsonConfig.credentialItems[v[0]].accessToken = payload;
+        });
+        common_1.commonLogger.info(this, `Loaded ${Object.keys(jsonConfig.credentialItems).length} entities from the configuration file ${this.configFileName}`);
         this.seqno = jsonConfig.stateSequence;
         this.authRequests = jsonConfig.authRequests;
-        return jsonConfig;
-    }
-    async loadCredentialsDb() {
-        let configFile = await this.loadConfigFile();
-        common_1.commonLogger.info(this, `Loaded ${Object.keys(configFile.credentialItems).length} entities from the configuration file ${this.configFileName}`);
-        return configFile.credentialItems;
+        return jsonConfig.credentialItems;
     }
     async requestAuthState(datalakeId, clientParams) {
         let newRequestState = (this.seqno++).toString();
@@ -133,8 +107,8 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
         common_1.commonLogger.info(this, `Deleted auth request state ${state} from storage with a full sync`);
         return this.fullSync();
     }
-    credentialsObjectFactory(datalakeId, accTokenGuardTime, prefetch) {
-        return this.defaultCredentialsObjectFactory(datalakeId, accTokenGuardTime, prefetch);
+    credentialsObjectFactory(datalakeId, entryPoint, accTokenGuardTime, prefetch) {
+        return this.defaultCredentialsObjectFactory(datalakeId, entryPoint, accTokenGuardTime, prefetch);
     }
 }
 const ENV_PREFIX = 'PAN';
@@ -163,8 +137,7 @@ async function fsCredentialsFactory(ops) {
         let blankConfig = {
             stateSequence: Math.floor(Date.now() * Math.random()),
             authRequests: {},
-            credentialItems: {},
-            refreshTokens: {}
+            credentialItems: {}
         };
         await promifyFs(this, fs.writeFile, configFileName, JSON.stringify(blankConfig));
     }

@@ -17,7 +17,6 @@ import { Credentials } from './credentials'
 import { fetch, FetchOptions } from './fetch'
 import { env } from 'process'
 import { stringify as qsStringify, parse as qsParse } from 'querystring'
-import { stat } from 'fs';
 
 const IDP_TOKEN_URL = 'https://api.paloaltonetworks.com/api/oauth2/RequestToken'
 const IDP_REVOKE_URL = 'https://api.paloaltonetworks.com/api/oauth2/RevokeToken'
@@ -43,6 +42,8 @@ interface IdpErrorResponse {
 export interface CredentialsItem {
     accessToken: string
     validUntil: number
+    entryPoint: EntryPoint
+    refreshToken: string
     datalakeId: string
 }
 
@@ -66,9 +67,9 @@ export interface RefreshResult {
 export interface CortexClientParams<T> {
     instance_id: string,
     instance_name?: string,
-    location?: {
+    location: {
         region: string,
-        entryPoint?: EntryPoint
+        entryPoint: EntryPoint
     }
     lsn?: string,
     customFields?: T
@@ -77,7 +78,7 @@ export interface CortexClientParams<T> {
 export interface CredentialProviderOptions {
     idpTokenUrl?: string
     idpRevokeUrl?: string
-    idpAuthUrl?: string
+    idpCallbackUrl?: string
     accTokenGuardTime?: number
     retrierAttempts?: number
     retrierDelay?: number
@@ -89,22 +90,28 @@ export abstract class CortexCredentialProvider<T> {
     private idpTokenUrl: string
     private idpRevokeUrl: string
     private idpAuthUrl: string
+    protected idpCallbackUrl?: string
     protected credentials: {
         [dlid: string]: CredentialsItem
     }
-    protected credentialsRefreshToken: { [dlid: string]: string }
     private credentialsObject: { [dlid: string]: Credentials }
     private retrierAttempts?: number
     private retrierDelay?: number
     private accTokenGuardTime: number
     static className = 'CortexCredentialProvider'
 
-    protected constructor(ops: CredentialProviderOptions & { clientId: string, clientSecret: string }) {
+    protected constructor(ops: CredentialProviderOptions & {
+        clientId: string, clientSecret: string, idpAuthUrl?: string
+    }) {
         this.clientId = ops.clientId
         this.clientSecret = ops.clientSecret
         this.idpTokenUrl = (ops.idpTokenUrl) ? ops.idpTokenUrl : IDP_TOKEN_URL
         this.idpRevokeUrl = (ops.idpRevokeUrl) ? ops.idpRevokeUrl : IDP_REVOKE_URL
         this.idpAuthUrl = (ops.idpAuthUrl) ? ops.idpAuthUrl : IDP_AUTH_URL
+        if (!ops.idpCallbackUrl) {
+            commonLogger.alert(CortexCredentialProvider, 'ALERT: idpCallbackUrl not provided. Authorization methods can\'t be used.')
+        }
+        this.idpCallbackUrl = ops.idpCallbackUrl
         this.accTokenGuardTime = (ops.accTokenGuardTime) ? ops.accTokenGuardTime : ACCESS_GUARD
         this.retrierAttempts = ops.retrierAttempts
         this.retrierDelay = ops.retrierDelay
@@ -199,89 +206,72 @@ export abstract class CortexCredentialProvider<T> {
 
     private async restoreState(): Promise<void> {
         this.credentials = await this.loadCredentialsDb()
-        this.credentialsRefreshToken = {}
         this.credentialsObject = {}
-        for (let datalakeId in this.credentials) {
-            if (!this.credentialsRefreshToken[datalakeId]) {
-                try {
-                    this.credentialsRefreshToken[datalakeId] = await this.retrieveCortexRefreshToken(datalakeId)
-                    this.credentialsObject[datalakeId] = await this.credentialsObjectFactory(datalakeId, this.accTokenGuardTime)
-                } catch (e) {
-                    commonLogger.info(CortexCredentialProvider, `Refresh Token for datalake ${datalakeId} not available at restore time. Due to ${(e as Error).message}`)
-                    delete this.credentials[datalakeId]
-                }
-            }
+        for (let dlake of Object.entries(this.credentials)) {
+            this.credentialsObject[dlake[0]] = await this.credentialsObjectFactory(
+                dlake[0], dlake[1].entryPoint, this.accTokenGuardTime)
         }
         commonLogger.info(CortexCredentialProvider, `Successfully restored ${Object.keys(this.credentials).length} items`)
     }
 
-    private async settleCredObject(datalakeId: string, accessToken: string, validUntil: number): Promise<Credentials> {
-        let credentialsObject = await this.credentialsObjectFactory(datalakeId, this.accTokenGuardTime, {
-            accessToken: accessToken,
-            validUntil: validUntil
-        })
+    private async issueWithRefreshToken(datalakeId: string, entryPoint: EntryPoint, refreshToken: string): Promise<Credentials> {
+        if (!this.credentials) {
+            await this.restoreState()
+        }
+        let idpResponse = await this.refreshAccessToken(refreshToken)
+        let currentRefreshToken = refreshToken
+        if (idpResponse.refresh_token) {
+            currentRefreshToken = idpResponse.refresh_token
+            commonLogger.info(CortexCredentialProvider, `Received new Cortex Refresh Token for datalake ID ${datalakeId} from Identity Provider`)
+        }
+        commonLogger.info(CortexCredentialProvider, `Retrieved Access Token for datalake ID ${datalakeId} from Identity Provider`)
+
         let credItem: CredentialsItem = {
-            accessToken: accessToken,
+            accessToken: idpResponse.access_token,
+            refreshToken: currentRefreshToken,
+            entryPoint: entryPoint,
             datalakeId: datalakeId,
-            validUntil: validUntil,
+            validUntil: idpResponse.validUntil,
         }
         this.credentials[datalakeId] = credItem
+
+        let credentialsObject = await this.credentialsObjectFactory(datalakeId, entryPoint, this.accTokenGuardTime, {
+            accessToken: idpResponse.access_token,
+            validUntil: idpResponse.validUntil
+        })
+
         this.credentialsObject[datalakeId] = credentialsObject
         await this.createCredentialsItem(datalakeId, credItem)
         commonLogger.info(CortexCredentialProvider, `Issued new Credentials Object for datalake ID ${datalakeId}`)
         return credentialsObject
     }
 
-    private async issueWithRefreshToken(datalakeId: string, refreshToken: string): Promise<Credentials> {
-        if (!this.credentials) {
-            await this.restoreState()
-        }
-        if (this.credentialsRefreshToken[datalakeId] == refreshToken) {
-            return this.issueCredentialsObject(datalakeId)
-        }
-        if (!this.credentialsRefreshToken[datalakeId]) {
-            this.credentialsRefreshToken[datalakeId] = refreshToken
-            await this.createCortexRefreshToken(datalakeId, refreshToken)
-        } else {
-            this.credentialsRefreshToken[datalakeId] = refreshToken
-            await this.updateCortexRefreshToken(datalakeId, refreshToken)
-        }
-        let idpResponse = await this.refreshAccessToken(refreshToken)
-        if (idpResponse.refresh_token) {
-            this.credentialsRefreshToken[datalakeId] = idpResponse.refresh_token
-            commonLogger.info(CortexCredentialProvider, `Received new Cortex Refresh Token for datalake ID ${datalakeId} from Identity Provider`)
-            await this.updateCortexRefreshToken(datalakeId, idpResponse.refresh_token)
-        }
-        commonLogger.info(CortexCredentialProvider, `Retrieved Access Token for datalake ID ${datalakeId} from Identity Provider`)
-        return this.settleCredObject(datalakeId, idpResponse.access_token, idpResponse.validUntil)
-    }
-
     async registerCodeDatalake(code: string, state: string, redirectUri: string, ): Promise<Credentials> {
+        let authState = await this.restoreAuthState(state)
         let idpResponse = await this.fetchTokens(code, redirectUri)
         if (!idpResponse.refresh_token) {
             throw new PanCloudError(CortexCredentialProvider, 'IDENTITY', 'Identity response does not include a refresh token')
         }
-        let authState = await this.restoreAuthState(state)
-        let credential = await this.issueWithRefreshToken(authState.datalakeId, idpResponse.refresh_token)
+        let credential = await this.issueWithRefreshToken(authState.datalakeId,
+            authState.clientParams.location.entryPoint, idpResponse.refresh_token)
         await this.deleteAuthState(state)
         return credential
     }
 
-    async registerManualDatalake(datalakeId: string, refreshToken: string): Promise<Credentials> {
-        return this.issueWithRefreshToken(datalakeId, refreshToken)
+    async registerManualDatalake(datalakeId: string, entryPoint: EntryPoint, refreshToken: string): Promise<Credentials> {
+        return this.issueWithRefreshToken(datalakeId, entryPoint, refreshToken)
     }
 
-    async issueCredentialsObject(datalakeId: string): Promise<Credentials> {
+    async getCredentialsObject(datalakeId: string): Promise<Credentials> {
         if (!this.credentials) {
             await this.restoreState()
         }
-        if (this.credentials[datalakeId]) {
-            commonLogger.info(CortexCredentialProvider, `Providing cached credentials object for datalake ID ${datalakeId}`)
-            return this.credentialsObject[datalakeId]
+        if (!this.credentialsObject[datalakeId]) {
+            throw new PanCloudError(CortexCredentialProvider, 'CONFIG',
+                `Record for datalake ${datalakeId} not available. Did you forget to register the refresh token?`)
         }
-        let refreshToken = await this.retrieveCortexRefreshToken(datalakeId)
-        commonLogger.info(CortexCredentialProvider, `Retrieved Cortex Refresh Token for datalake ID ${datalakeId} from Store`)
-        return this.issueWithRefreshToken(datalakeId, refreshToken)
+        commonLogger.info(CortexCredentialProvider, `Providing cached credentials object for datalake ID ${datalakeId}`)
+        return this.credentialsObject[datalakeId]
     }
 
     async deleteDatalake(datalakeId: string): Promise<void> {
@@ -297,7 +287,7 @@ export abstract class CortexCredentialProvider<T> {
             body: JSON.stringify({
                 "client_id": this.clientId,
                 "client_secret": this.clientSecret,
-                "token": this.credentialsRefreshToken[datalakeId],
+                "token": this.credentials[datalakeId].refreshToken,
                 "token_type_hint": "refresh_token"
             })
         }
@@ -307,8 +297,6 @@ export abstract class CortexCredentialProvider<T> {
         } catch (e) {
             commonLogger.alert(CortexCredentialProvider, `Non expected revoke response received by IDP ${e}`)
         }
-        delete this.credentialsRefreshToken[datalakeId]
-        await this.deleteCortexRefreshToken(datalakeId)
         delete this.credentials[datalakeId]
         await this.deleteCredentialsItem(datalakeId)
         delete this.credentialsObject[datalakeId]
@@ -325,13 +313,12 @@ export abstract class CortexCredentialProvider<T> {
         if (Date.now() + this.accTokenGuardTime * 1000 > credentials.validUntil * 1000) {
             try {
                 commonLogger.info(CortexCredentialProvider, 'Asking for a new access_token')
-                let idpResponse = await this.refreshAccessToken(this.credentialsRefreshToken[datalakeId])
+                let idpResponse = await this.refreshAccessToken(credentials.refreshToken)
                 credentials.accessToken = idpResponse.access_token
                 credentials.validUntil = idpResponse.validUntil
                 if (idpResponse.refresh_token) {
-                    this.credentialsRefreshToken[datalakeId] = idpResponse.refresh_token
+                    credentials.refreshToken = idpResponse.refresh_token
                     commonLogger.info(CortexCredentialProvider, 'Received new Cortex Refresh Token')
-                    await this.updateCortexRefreshToken(datalakeId, idpResponse.refresh_token)
                 }
                 await this.updateCredentialsItem(datalakeId, credentials)
             } catch {
@@ -359,21 +346,26 @@ export abstract class CortexCredentialProvider<T> {
         throw new PanCloudError(CortexCredentialProvider, 'PARSER', `Invalid response received by IDP provider`)
     }
 
-    async idpAuthRequest(redirectUri: string, scope: OAUTH2SCOPE[], datalakeId: string, clientParams: CortexClientParams<T>): Promise<URL> {
+    async idpAuthRequest(scope: OAUTH2SCOPE[], datalakeId: string, queryString: string): Promise<URL> {
+        let clientParams = this.paramsParser(queryString)
+        if (!this.idpCallbackUrl) {
+            throw new PanCloudError(CortexCredentialProvider, 'CONFIG', `idpCallbackUrl was not provided in the ops passed to the constructor. Can't request auth without it.`)
+        }
+        let stateId = await this.requestAuthState(datalakeId, clientParams)
         let qsParams: { [index: string]: string } = {
             response_type: 'code',
             client_id: this.clientId,
-            redirect_uri: redirectUri,
+            redirect_uri: this.idpCallbackUrl,
             scope: scope.join(' '),
             instance_id: clientParams.instance_id,
-            state: await this.requestAuthState(datalakeId, clientParams)
+            state: stateId
         }
         let urlString = `${this.idpAuthUrl}?${qsStringify(qsParams)}`
         commonLogger.info(CortexCredentialProvider, `Providing IDP Auth URL: ${urlString}`)
         return new URL(urlString)
     }
 
-    paramsParser(queryString: string): CortexClientParams<T> {
+    protected paramsParser(queryString: string): CortexClientParams<T> {
         let b64Decoded = ''
         try {
             b64Decoded = Buffer.from(queryString, 'base64').toString()
@@ -384,10 +376,15 @@ export abstract class CortexCredentialProvider<T> {
         if (!(parsed.instance_id && typeof parsed.instance_id == 'string')) {
             throw new PanCloudError(CortexCredentialProvider, 'PARSER', `Missing mandatory instance_id in ${queryString}`)
         }
+        if (!(parsed.region && typeof parsed.region == 'string')) {
+            throw new PanCloudError(CortexCredentialProvider, 'PARSER', `Missing or invalid region in ${queryString}`)
+        }
         let cParams: CortexClientParams<T> = {
-            instance_id: parsed.instance_id
+            instance_id: parsed.instance_id,
+            location: { region: parsed.region, entryPoint: region2EntryPoint[parsed.region] }
         }
         delete parsed.instance_id
+        delete parsed.region
         if (parsed.instance_name && typeof parsed.instance_name == 'string') {
             cParams.instance_name = parsed.instance_name
             delete parsed.instance_name
@@ -395,10 +392,6 @@ export abstract class CortexCredentialProvider<T> {
         if (parsed.lsn && typeof parsed.lsn == 'string') {
             cParams.lsn = parsed.lsn
             delete parsed.lsn
-        }
-        if (parsed.region && typeof parsed.region == 'string') {
-            cParams.location = { region: parsed.region, entryPoint: region2EntryPoint[parsed.region] }
-            delete parsed.region
         }
         try {
             let customField = (JSON.parse(JSON.stringify(parsed)) as T)
@@ -409,17 +402,13 @@ export abstract class CortexCredentialProvider<T> {
         return cParams
     }
 
-    protected async defaultCredentialsObjectFactory(datalakeId: string, accTokenGuardTime: number,
+    protected async defaultCredentialsObjectFactory(datalakeId: string, entryPoint: EntryPoint, accTokenGuardTime: number,
         prefetch?: { accessToken: string, validUntil: number }): Promise<Credentials> {
-        let credObject = new DefaultCredentials(datalakeId, accTokenGuardTime, this, prefetch)
+        let credObject = new DefaultCredentials(datalakeId, entryPoint, accTokenGuardTime, this, prefetch)
         commonLogger.info(CortexCredentialProvider, `Instantiated new credential object from the factory for datalake id ${datalakeId}`)
         return credObject
     }
 
-    protected async abstract createCortexRefreshToken(datalakeId: string, refreshToken: string): Promise<void>
-    protected async abstract updateCortexRefreshToken(datalakeId: string, refreshToken: string): Promise<void>
-    protected async abstract deleteCortexRefreshToken(datalakeId: string): Promise<void>
-    protected async abstract retrieveCortexRefreshToken(datalakeId: string): Promise<string>
     protected async abstract createCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem): Promise<void>
     protected async abstract updateCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem): Promise<void>
     protected async abstract deleteCredentialsItem(datalakeId: string): Promise<void>
@@ -427,12 +416,11 @@ export abstract class CortexCredentialProvider<T> {
     protected async abstract requestAuthState(datalakeId: string, clientParams: CortexClientParams<T>): Promise<string>
     protected async abstract restoreAuthState(state: string): Promise<{ datalakeId: string, clientParams: CortexClientParams<T> }>
     protected async abstract deleteAuthState(state: string): Promise<void>
-    protected async abstract credentialsObjectFactory(datalakeId: string, accTokenGuardTime: number,
+    protected async abstract credentialsObjectFactory(datalakeId: string, entryPoint: EntryPoint, accTokenGuardTime: number,
         prefetch?: { accessToken: string, validUntil: number }): Promise<Credentials>
 }
 
 class DefaultCredentialsProvider<T> extends CortexCredentialProvider<T> {
-    private envPrefix: string
     private sequence: number
     private authRequest: {
         [state: string]: {
@@ -442,37 +430,10 @@ class DefaultCredentialsProvider<T> extends CortexCredentialProvider<T> {
     }
     className = 'DefaultCredentialsProvider'
 
-    constructor(ops: CredentialProviderOptions & { clientId: string, clientSecret: string, envPrefix: string }) {
+    constructor(ops: CredentialProviderOptions & { clientId: string, clientSecret: string }) {
         super(ops)
-        this.envPrefix = ops.envPrefix
         this.sequence = Math.floor(Date.now() * Math.random())
         this.authRequest = {}
-    }
-
-    protected createCortexRefreshToken(datalakeId: string, refreshToken: string): Promise<void> {
-        return this.updateCortexRefreshToken(datalakeId, refreshToken)
-    }
-
-    protected async updateCortexRefreshToken(datalakeId: string, refreshToken: string): Promise<void> {
-        let environmentVariable = `${this.envPrefix}_REFRESH_${datalakeId}`
-        env[environmentVariable] = refreshToken
-        commonLogger.info(this, `Updated environment variable ${environmentVariable} with new refresh token`)
-    }
-
-    protected async deleteCortexRefreshToken(datalakeId: string): Promise<void> {
-        let environmentVariable = `${this.envPrefix}_REFRESH_${datalakeId}`
-        delete env[environmentVariable]
-        commonLogger.info(this, `Deleted environment variable ${environmentVariable}`)
-    }
-
-    protected async retrieveCortexRefreshToken(datalakeId: string): Promise<string> {
-        let environmentVariable = `${this.envPrefix}_REFRESH_${datalakeId}`
-        let refreshToken = env[environmentVariable]
-        if (!refreshToken) {
-            throw new PanCloudError(this, 'CONFIG', `Environment variable ${environmentVariable} not found or empty value`)
-        }
-        commonLogger.info(this, `Retrieved refresh token for datalake id ${datalakeId} from environment variable ${environmentVariable}`)
-        return refreshToken
     }
 
     protected async createCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem): Promise<void> {
@@ -516,9 +477,9 @@ class DefaultCredentialsProvider<T> extends CortexCredentialProvider<T> {
         return Promise.resolve()
     }
 
-    protected credentialsObjectFactory(datalakeId: string, accTokenGuardTime: number,
+    protected credentialsObjectFactory(datalakeId: string, entryPoint: EntryPoint, accTokenGuardTime: number,
         prefetch?: { accessToken: string, validUntil: number }): Promise<Credentials> {
-        return this.defaultCredentialsObjectFactory(datalakeId, accTokenGuardTime, prefetch)
+        return this.defaultCredentialsObjectFactory(datalakeId, entryPoint, accTokenGuardTime, prefetch)
     }
 }
 
@@ -526,9 +487,9 @@ class DefaultCredentials extends Credentials {
     accessTokenSupplier: CortexCredentialProvider<{}>
     datalakeId: string
 
-    constructor(datalakeId: string, accTokenGuardTime: number, supplier: CortexCredentialProvider<{}>,
+    constructor(datalakeId: string, entryPoint: EntryPoint, accTokenGuardTime: number, supplier: CortexCredentialProvider<{}>,
         prefetch?: { accessToken: string, validUntil: number }) {
-        super(accTokenGuardTime)
+        super(entryPoint, accTokenGuardTime)
         this.datalakeId = datalakeId
         this.accessTokenSupplier = supplier
         if (prefetch) {
@@ -550,11 +511,14 @@ export async function defaultCredentialsProviderFactory(ops?: CredentialProvider
     envPrefix?: string
     clientId?: string,
     clientSecret?: string,
-    refreshToken?: string
+    refreshToken?: string,
+    entryPoint?: EntryPoint
 }): Promise<Credentials> {
     let ePrefix = (ops && ops.envPrefix) ? ops.envPrefix : ENV_PREFIX
-    let envClientId = `${ePrefix}_MASTER_CLIENTID`
-    let envClientSecret = `${ePrefix}_MASTER_CLIENTSECRET`
+    let envClientId = `${ePrefix}_CLIENT_ID`
+    let envClientSecret = `${ePrefix}_CLIENT_SECRET`
+    let envDefaultRefreshToken = `${ePrefix}_REFRESH_TOKEN`
+    let envEntryPoint = `${ePrefix}_ENTRYPOINT`
     let cId = (ops && ops.clientId) ? ops.clientId : env[envClientId]
     if (!cId) {
         throw new PanCloudError({ className: 'DefaultCredentialsProvider' }, 'CONFIG',
@@ -566,14 +530,20 @@ export async function defaultCredentialsProviderFactory(ops?: CredentialProvider
         throw new PanCloudError({ className: 'DefaultCredentialsProvider' }, 'CONFIG',
             `Environment variable ${envClientSecret} not found or empty value`)
     }
-    if (ops && ops.refreshToken) {
-        env[`${ePrefix}_REFRESH_DEFAULT`] = ops.refreshToken
-    }
     commonLogger.info({ className: "defaultCredentialsFactory" }, `Got 'client_secret'`)
+    let rTok = (ops && ops.refreshToken) ? ops.refreshToken : env[envDefaultRefreshToken]
+    if (!rTok) {
+        throw new PanCloudError({ className: 'DefaultCredentialsProvider' }, 'CONFIG',
+            `Environment variable ${envDefaultRefreshToken} not found or empty value`)
+    }
+    let entryPoint = (ops && ops.entryPoint) ? ops.entryPoint : (env[envEntryPoint] as EntryPoint)
+    if (!entryPoint) {
+        throw new PanCloudError({ className: 'DefaultCredentialsProvider' }, 'CONFIG',
+            `Environment variable ${envEntryPoint} not found or empty value`)
+    }
     return new DefaultCredentialsProvider({
-        envPrefix: ePrefix,
         clientId: cId,
         clientSecret: cSec,
         ...ops
-    }).issueCredentialsObject('DEFAULT')
+    }).registerManualDatalake('DEFAULT', entryPoint, rTok)
 }

@@ -1,8 +1,6 @@
 import { autoCredentials, EventService, EsFilterBuilderCfg, EmitterInterface, LogLevel } from 'pancloud-nodejs'
 import { writeFileSync } from 'fs'
 
-const entryPoint = "https://api.us.paloaltonetworks.com"
-
 let builderCfg: EsFilterBuilderCfg = {
     filter: [
         { table: "panw.threat", timeout: 1000 }],
@@ -23,11 +21,7 @@ let builderCfg: EsFilterBuilderCfg = {
  */
 export async function main(): Promise<void> {
     let c = await autoCredentials()
-    let es = await EventService.factory(entryPoint, {
-        credential: c,
-        fetchTimeout: 45000
-        // level: LogLevel.DEBUG
-    })
+    let es = await EventService.factory(c)
     await es.filterBuilder(builderCfg)
     console.log("Set the filter and registered the async pcap receiver")
     await new Promise<void>(resolve => {

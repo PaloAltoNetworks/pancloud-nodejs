@@ -6,7 +6,7 @@ export async function main(): Promise<void> {
     if (!accessToken) {
         throw new Error(`environmental variable PAN_ACCESS_TOKEN does not exist is null`)
     }
-    let c = await defaultCredentialsFactory(accessToken)
+    let c = await defaultCredentialsFactory('https://api.us.paloaltonetworks.com', accessToken)
     let d = new Date(await c.getExpiration() * 1000)
     console.log(`Access Token: ${await c.getAccessToken()}\nValid until: ${d.toISOString()}`)
 }

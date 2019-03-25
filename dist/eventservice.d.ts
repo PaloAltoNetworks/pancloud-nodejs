@@ -1,9 +1,7 @@
-/**
- * High level abstraction of the Application Framework Event Service
- */
 /// <reference types="node" />
-import { LogType, EntryPoint } from './common';
+import { LogType } from './common';
 import { Emitter, EmitterOptions, EmitterInterface, EmitterStats, L2correlation } from './emitter';
+import { Credentials } from './credentials';
 /**
  * Event Service emitted message interface
  */
@@ -225,15 +223,18 @@ export declare class EventService extends Emitter implements Iterable<Promise<Es
     private polling;
     private eevent;
     protected stats: EsStats;
+    /**
+     * Private constructor. Use the class's static `factory()` method instead
+     */
     private constructor();
     private setChannel;
     /**
      * Static factory method to instantiate an Event Service object
-     * @param entryPoint a **string** containing a valid Application Framework API URL
+     * @param cred the **Credentials** object that will be used to obtain JWT access tokens
      * @param esOps a valid **EsOptions** configuration objet
      * @returns an instantiated **EventService** object
      */
-    static factory(entryPoint: EntryPoint, esOps: EsOptions): EventService;
+    static factory(cred: Credentials, esOps?: EsOptions): EventService;
     /**
      * @returns the current Event Service filter configuration
      */

@@ -1,10 +1,11 @@
+/// <reference types="node" />
 /**
  * High level abstraction of the Application Framework Logging Service
  */
-/// <reference types="node" />
-import { LogType, EntryPoint } from './common';
+import { LogType } from './common';
 import { Emitter, EmitterOptions, EmitterInterface, EmitterStats, L2correlation } from './emitter';
 import { SdkErr } from './error';
+import { Credentials } from './credentials';
 declare const jStatus: {
     'RUNNING': string;
     'FINISHED': string;
@@ -164,14 +165,17 @@ export declare class LoggingService extends Emitter {
     private lastProcElement;
     private pendingQueries;
     protected stats: LsStats;
+    /**
+     * Private constructor. Use the class's static `factory()` method instead
+     */
     private constructor();
     /**
      * Static factory method to instantiate an Event Service object
-     * @param entryPoint a **string** containing a valid Application Framework API URL
+     * @param cred the **Credentials** object that will be used to obtain JWT access tokens
      * @param lsOps a valid **LsOptions** configuration objet
      * @returns an instantiated **LoggingService** object
      */
-    static factory(entryPoint: EntryPoint, lsOps: LsOptions): LoggingService;
+    static factory(cred: Credentials, lsOps?: LsOptions): LoggingService;
     /**
      * Performs a Logging Service query call and returns a promise with the response.
      * If the _CallBack_ handler is provided then it will be registered into the event topic and

@@ -1,6 +1,5 @@
 import { autoCredentials, LoggingService, LsQueryCfg, EmitterInterface, LogLevel } from 'pancloud-nodejs'
 
-const entryPoint = "https://api.us.paloaltonetworks.com"
 let now = Math.floor(Date.now() / 1000)
 
 let query: LsQueryCfg = {
@@ -18,11 +17,7 @@ let query: LsQueryCfg = {
  */
 export async function main(): Promise<void> {
     let c = await autoCredentials()
-    let ls = await LoggingService.factory(entryPoint, {
-        credential: c,
-        fetchTimeout: 45000
-        // level: LogLevel.DEBUG
-    })
+    let ls = await LoggingService.factory(c, { fetchTimeout: 45000 })
     try {
         let result = await ls.query(query)
         console.log(`Job ${result.queryId} completed with status ${result.queryStatus}`)
