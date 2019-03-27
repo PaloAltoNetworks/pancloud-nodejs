@@ -1,4 +1,3 @@
-/// <reference types="node" />
 /**
  * Class containing a static public method with utilities
  */

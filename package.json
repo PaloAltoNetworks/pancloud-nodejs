@@ -26,5 +26,7 @@
   },
   "homepage": "https://github.com/PaloAltoNetworks/pancloud-nodejs#readme",
   "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/express": "^4.16.1"
+  }
 }
