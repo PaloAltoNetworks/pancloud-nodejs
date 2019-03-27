@@ -20,7 +20,6 @@ const crypto_1 = require("crypto");
 const fs = require("fs");
 function isConfigFile(obj) {
     return typeof obj == 'object' &&
-        obj.stateSequence && typeof obj.stateSequence == 'number' &&
         obj.credentialItems && typeof obj.credentialItems == 'object' &&
         Object.entries(obj.credentialItems).every(v => typeof v[0] == 'string' && credentialprovider_1.isCredentialItem(v[1]));
 }
@@ -34,9 +33,7 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
     }
     async fullSync() {
         let configFile = {
-            stateSequence: this.seqno,
-            credentialItems: this.credentials,
-            authRequests: this.authRequests
+            credentialItems: this.credentials
         };
         Object.entries(this.credentials).forEach(v => {
             let aes = crypto_1.createCipheriv('aes128', this.key, this.iv);
@@ -81,31 +78,7 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
             jsonConfig.credentialItems[v[0]].accessToken = payload;
         });
         common_1.commonLogger.info(this, `Loaded ${Object.keys(jsonConfig.credentialItems).length} entities from the configuration file ${this.configFileName}`);
-        this.seqno = jsonConfig.stateSequence;
-        this.authRequests = jsonConfig.authRequests;
         return jsonConfig.credentialItems;
-    }
-    async requestAuthState(datalakeId, clientParams) {
-        let newRequestState = (this.seqno++).toString();
-        this.authRequests[newRequestState] = {
-            datalakeId: datalakeId,
-            clientParams: clientParams
-        };
-        await this.fullSync();
-        common_1.commonLogger.info(this, `Stored new auth request for datalakeId ${datalakeId}. Provided state ${newRequestState}`);
-        return newRequestState;
-    }
-    restoreAuthState(state) {
-        if (!this.authRequests[state]) {
-            throw new error_1.PanCloudError(this, 'CONFIG', `Unknown authentication state ${state}`);
-        }
-        common_1.commonLogger.info(this, `Returning authentication state ${state}`);
-        return Promise.resolve(this.authRequests[state]);
-    }
-    deleteAuthState(state) {
-        delete this.authRequests[state];
-        common_1.commonLogger.info(this, `Deleted auth request state ${state} from storage with a full sync`);
-        return this.fullSync();
     }
     credentialsObjectFactory(datalakeId, entryPoint, accTokenGuardTime, prefetch) {
         return this.defaultCredentialsObjectFactory(datalakeId, entryPoint, accTokenGuardTime, prefetch);
@@ -116,8 +89,8 @@ const CONFIG_FILE = 'PANCLOUD_CONFIG.json';
 async function fsCredentialsFactory(ops) {
     let { key, iv } = passIvGenerator(ops.secret);
     let ePrefix = (ops && ops.envPrefix) ? ops.envPrefix : ENV_PREFIX;
-    let envClientId = `${ePrefix}_MASTER_CLIENTID`;
-    let envClientSecret = `${ePrefix}_MASTER_CLIENTSECRET`;
+    let envClientId = `${ePrefix}_CLIENT_ID`;
+    let envClientSecret = `${ePrefix}_CLIENT_SECRET`;
     let cId = (ops && ops.clientId) ? ops.clientId : process_1.env[envClientId];
     if (!cId) {
         throw new error_1.PanCloudError({ className: 'DefaultCredentialsProvider' }, 'CONFIG', `Environment variable ${envClientId} not found or empty value`);
@@ -135,8 +108,6 @@ async function fsCredentialsFactory(ops) {
     catch (e) {
         common_1.commonLogger.info({ className: 'fsCredProvider' }, `${configFileName} does not exist. Creating it`);
         let blankConfig = {
-            stateSequence: Math.floor(Date.now() * Math.random()),
-            authRequests: {},
             credentialItems: {}
         };
         await promifyFs(this, fs.writeFile, configFileName, JSON.stringify(blankConfig));
@@ -152,8 +123,8 @@ async function fsCredentialsFactory(ops) {
 exports.fsCredentialsFactory = fsCredentialsFactory;
 function passIvGenerator(secret) {
     let code = crypto_1.createHash('sha1').update(secret).digest();
-    let key = new DataView(code.buffer.slice(0, 16));
-    let iv = new DataView(code.buffer.slice(4, 20));
+    let key = code.slice(0, 16);
+    let iv = code.slice(4, 20);
     return {
         key: key,
         iv: iv
