@@ -117,6 +117,12 @@ class StaticCredentials extends Credentials {
     }
 }
 
+/**
+ * Initializes a static (meant to be used for testing and quick starting) Credentials object. Please
+ * note that the returned object won't refresh the token at all.
+ * @param entryPoint Cortex Hub regional API entry point
+ * @param accessToken OAUTH2 `access_token` value.
+ */
 export function defaultCredentialsFactory(entryPoint: EntryPoint, accessToken: string): Credentials {
     return new StaticCredentials(entryPoint, accessToken)
 }

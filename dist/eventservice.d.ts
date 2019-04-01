@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { LogType } from './common';
 import { Emitter, EmitterOptions, EmitterInterface, EmitterStats, L2correlation } from './emitter';
 import { Credentials } from './credentials';

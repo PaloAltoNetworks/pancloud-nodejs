@@ -20,6 +20,10 @@ const process_1 = require("process");
 const IDP_TOKEN_URL = 'https://api.paloaltonetworks.com/api/oauth2/RequestToken';
 const IDP_REVOKE_URL = 'https://api.paloaltonetworks.com/api/oauth2/RevokeToken';
 const ACCESS_GUARD = 300; // 5 minutes
+/**
+ * Conveniente type guard to check an object against the `CredentialsItem` interface
+ * @param obj object to check
+ */
 function isCredentialItem(obj) {
     return typeof obj == 'object' &&
         obj.accessToken && typeof obj.accessToken == 'string' &&
@@ -31,7 +35,15 @@ function isIdpErrorResponse(obj) {
     return (obj.error !== undefined && typeof obj.error == 'string' &&
         obj.error_description !== undefined && typeof obj.error_description == 'string');
 }
+/**
+ * Abstract class to provide credentials for multiple datalakes. If you want to extend this class
+ * then you must implement its storage-related methods.
+ */
 class CortexCredentialProvider {
+    /**
+     * Class constructor
+     * @param ops constructor options. Mandatory fields being OAUTH2 `clientId` and `clientSecret`
+     */
     constructor(ops) {
         this.clientId = ops.clientId;
         this.clientSecret = ops.clientSecret;
@@ -44,9 +56,16 @@ class CortexCredentialProvider {
             throw new error_1.PanCloudError(CortexCredentialProvider, 'CONFIG', `Property 'accTokenGuardTime' must be, at max 3300 seconds (${this.accTokenGuardTime})`);
         }
     }
+    /**
+     * @returns this CredentialProvider class OAUTH2 `[clientId, clientSecret]`
+     */
     getSecrets() {
         return [this.clientId, this.clientSecret];
     }
+    /**
+     * Do not use this method unless you know what you're doing. It is exposed because `CortexHubHelper`
+     * subclasses need it
+     */
     async idpRefresh(param) {
         let res = await common_1.retrier(CortexCredentialProvider, this.retrierAttempts, this.retrierDelay, fetch_1.fetch, this.idpTokenUrl, param);
         if (!res.ok) {
@@ -116,37 +135,66 @@ class CortexCredentialProvider {
         }
         common_1.commonLogger.info(CortexCredentialProvider, `Successfully restored ${Object.keys(this.credentials).length} items`);
     }
-    async issueWithRefreshToken(datalakeId, entryPoint, refreshToken) {
+    /**
+     * Issues a new credentials object for a datalake you have static access to its `refreshToken`.
+     * This is a low-level method. You better use this object's `registerManualDatalake` method or
+     * the `authCallbackHandler` method of a `CortexHubHelper` object that eases build multitenant
+     * applications
+     * @param datalakeId ID for this datalake
+     * @param entryPoint Cortex Datalake regional entry point
+     * @param refreshToken OAUTH2 `refresh_token` value
+     * @param prefetch You can provide the `access_token` and `valid_until` values if you also have
+     * access to them to avoid the initial token refresh operation
+     */
+    async issueWithRefreshToken(datalakeId, entryPoint, refreshToken, prefetch) {
         if (!this.credentials) {
             await this.restoreState();
         }
-        let idpResponse = await this.refreshAccessToken(refreshToken);
-        let currentRefreshToken = refreshToken;
-        if (idpResponse.refresh_token) {
-            currentRefreshToken = idpResponse.refresh_token;
-            common_1.commonLogger.info(CortexCredentialProvider, `Received new Cortex Refresh Token for datalake ID ${datalakeId} from Identity Provider`);
+        let accessToken;
+        let validUntil;
+        if (prefetch) {
+            ({ accessToken, validUntil } = prefetch);
         }
-        common_1.commonLogger.info(CortexCredentialProvider, `Retrieved Access Token for datalake ID ${datalakeId} from Identity Provider`);
+        else {
+            let idpResponse = await this.refreshAccessToken(refreshToken);
+            if (idpResponse.refresh_token) {
+                refreshToken = idpResponse.refresh_token;
+                common_1.commonLogger.info(CortexCredentialProvider, `Received new Cortex Refresh Token for datalake ID ${datalakeId} from Identity Provider`);
+            }
+            ({ access_token: accessToken, validUntil } = idpResponse);
+            common_1.commonLogger.info(CortexCredentialProvider, `Retrieved Access Token for datalake ID ${datalakeId} from Identity Provider`);
+        }
         let credItem = {
-            accessToken: idpResponse.access_token,
-            refreshToken: currentRefreshToken,
+            accessToken: accessToken,
+            refreshToken: refreshToken,
             entryPoint: entryPoint,
             datalakeId: datalakeId,
-            validUntil: idpResponse.validUntil,
+            validUntil: validUntil,
         };
         this.credentials[datalakeId] = credItem;
         let credentialsObject = await this.credentialsObjectFactory(datalakeId, entryPoint, this.accTokenGuardTime, {
-            accessToken: idpResponse.access_token,
-            validUntil: idpResponse.validUntil
+            accessToken: accessToken,
+            validUntil: validUntil
         });
         this.credentialsObject[datalakeId] = credentialsObject;
         await this.createCredentialsItem(datalakeId, credItem);
         common_1.commonLogger.info(CortexCredentialProvider, `Issued new Credentials Object for datalake ID ${datalakeId}`);
         return credentialsObject;
     }
+    /**
+     * Registers a datalake using its `refresh_token` value and returns a Credentials object bound
+     * to it
+     * @param datalakeId ID for this datalake
+     * @param entryPoint Cortex Datalake regional entry point
+     * @param refreshToken OAUTH2 `refresh_token` value
+     */
     async registerManualDatalake(datalakeId, entryPoint, refreshToken) {
         return this.issueWithRefreshToken(datalakeId, entryPoint, refreshToken);
     }
+    /**
+     * Retrieves the Credentials object for a given datalake
+     * @param datalakeId ID of the datalake the Credentials object should be bound to
+     */
     async getCredentialsObject(datalakeId) {
         if (!this.credentials) {
             await this.restoreState();
@@ -157,6 +205,10 @@ class CortexCredentialProvider {
         common_1.commonLogger.info(CortexCredentialProvider, `Providing cached credentials object for datalake ID ${datalakeId}`);
         return this.credentialsObject[datalakeId];
     }
+    /**
+     * Removes a datalake (revokes its OAUTH2 `refresh_token` as well)
+     * @param datalakeId ID of the datalake to be removed
+     */
     async deleteDatalake(datalakeId) {
         if (!this.credentials) {
             await this.restoreState();
@@ -185,6 +237,12 @@ class CortexCredentialProvider {
         await this.deleteCredentialsItem(datalakeId);
         delete this.credentialsObject[datalakeId];
     }
+    /**
+     * Main method used by a bound Credentials object. Returns the current `access_token` and its
+     * expiration time. It auto-refreshes the `access_token` if needed based on the `accTokenGuardTime`
+     * class configuration option
+     * @param datalakeId ID of the datalake to obtain `access_token` from
+     */
     async retrieveCortexAccessToken(datalakeId) {
         if (!this.credentials) {
             await this.restoreState();
@@ -273,6 +331,21 @@ class DefaultCredentials extends credentials_1.Credentials {
     }
 }
 const ENV_PREFIX = 'PAN';
+/**
+ * Instantiates a *memory-only* CredentialProvider subclass with only one datalake manually
+ * registered. Obtains all configuration values either from provided configuration options or
+ * from environmental variables.
+ * @param ops.envPrefix environmental variale prefix. Defaults to `PAN`
+ * @param ops.clientId OAUTH2 `client_id` value. If not provided will attempt to get it from the
+ * `{ops.envPrefix}_CLIENT_ID` environmental variable
+ * @param ops.clientSecret OAUTH2 `client_secret` value. If not provided will attempt to get it
+ * from the `{ops.envPrefix}_CLIENT_SECRET` environmental variable
+ * @param ops.refreshToken OAUTH2 `refresh_token` value. If not provided will attempt to get it
+ * from the `{ops.envPrefix}_REFRESH_TOKEN` environmental variable
+ * @param ops.entryPoint Cortex Datalake regiona API entrypoint. If not provided will attempt
+ * to get it from the `{ops.envPrefix}_ENTRYPOINT` environmental variable
+ * @returns a Credentials object bound to the provided `refres_token`
+ */
 async function defaultCredentialsProviderFactory(ops) {
     let ePrefix = (ops && ops.envPrefix) ? ops.envPrefix : ENV_PREFIX;
     let envClientId = `${ePrefix}_CLIENT_ID`;

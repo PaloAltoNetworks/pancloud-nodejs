@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /**
  * High level abstraction of the Application Framework Logging Service
  */

@@ -86,6 +86,17 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
 }
 const ENV_PREFIX = 'PAN';
 const CONFIG_FILE = 'PANCLOUD_CONFIG.json';
+/**
+ * Initializes a `CortexCredentialProvider` subclass that leverages the local filesystem as storage.
+ * State data will be stored in the file `PANCLOUD_CONFIG.json`
+ * Gets all its configuration options either from optional properties of from environmental variables
+ * @param secret encryption key that will be used to store sensible data at rest
+ * @param ops.envPrefix optional environmental variables prefix. Defauls to `PAN`
+ * @param ops.envClientId environmental variable that keeps the OAUTH2 `client_id` value in case it
+ * is not provided explicitly. Defaults to `{ops.envPrefix}_CLIENT_ID`
+ * @param ops.envClientSecret environmental variable that keeps the OAUTH2 `client_secret` value in
+ * case it is not provided explicitly. Defaults to `{ops.envPrefix}_CLIENT_SECRET`
+ */
 async function fsCredentialsFactory(ops) {
     let { key, iv } = passIvGenerator(ops.secret);
     let ePrefix = (ops && ops.envPrefix) ? ops.envPrefix : ENV_PREFIX;
