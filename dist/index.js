@@ -40,5 +40,6 @@ exports.defaultCredentialsProviderFactory = credentialprovider_1.defaultCredenti
 exports.isCredentialItem = credentialprovider_1.isCredentialItem;
 var hubhelper_1 = require("./hubhelper");
 exports.CortexHubHelper = hubhelper_1.CortexHubHelper;
+exports.isCortexClientParams = hubhelper_1.isCortexClientParams;
 var fscredentialprovider_1 = require("./fscredentialprovider");
 exports.fsCredentialsFactory = fscredentialprovider_1.fsCredentialsFactory;

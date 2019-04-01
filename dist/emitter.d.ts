@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { LogType } from './common';
 import { CoreClass, CoreOptions, CoreStats } from './core';
 import { MacCorrelator, CorrelationStats } from './l2correlator';

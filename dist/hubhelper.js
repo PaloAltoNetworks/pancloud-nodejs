@@ -18,10 +18,41 @@ const error_1 = require("./error");
 const querystring_1 = require("querystring");
 const url_1 = require("url");
 const IDP_AUTH_URL = 'https://identity.paloaltonetworks.com/as/authorization.oauth2';
+/**
+ * Convenience function to check if a given object conforms to the `CortexClientParams` interface
+ * @param obj the object to be checked
+ */
+function isCortexClientParams(obj) {
+    return obj && obj.instance_id && typeof obj.instance_id == 'string' &&
+        obj.instance_name && typeof obj.instance_name == 'string' &&
+        (obj.lsn == undefined || typeof obj.lsn == 'string') &&
+        obj.location && typeof obj.location == 'object' &&
+        obj.location.region && typeof obj.location.region == 'string' &&
+        obj.location.entryPoint && typeof obj.location.entryPoint == 'string';
+}
+exports.isCortexClientParams = isCortexClientParams;
+/**
+ * Abstract class with methods to help interfacing with the Cortex HUB.
+ * @param T dictionary-like extension with custom fields provided by the application in the
+ * manifest file
+ * @param U interface used by the `req.user` object provided by a *PassportJS-like* enabled
+ * application willing to use this class `authCallbackHandler` method.
+ * @param K the string-like property in `U` containing the requester TenantID
+ */
 class CortexHubHelper {
-    constructor(idpCallbackUrl, credProv, ops) {
+    /**
+     * Constructor method
+     * @param idpCallbackUrl One of the URI's provided in the `auth_redirect_uris` field of the manifest file
+     * @param credProv a `CortexCredentialProvider` instance that will be used by the `authCallbackHandler` to
+     * register new datalakes after activation
+     * @param tenantKey the name of the string-like property in `U` that contains the requesting Tenant ID
+     * @param ops class configuration options
+     */
+    constructor(idpCallbackUrl, credProv, tenantKey, ops) {
         this.idpAuthUrl = (ops && ops.idpAuthUrl) ? ops.idpAuthUrl : IDP_AUTH_URL;
+        this.callbackTenantValidation = (ops && typeof ops.forceCallbackTenantValidation == 'boolean') ? ops.forceCallbackTenantValidation : false;
         this.idpCallbackUrl = idpCallbackUrl;
+        this.tenantKey = tenantKey;
         [this.clientId, this.clientSecret] = credProv.getSecrets();
         this.credProvider = credProv;
     }
@@ -30,7 +61,7 @@ class CortexHubHelper {
      * @param code OAUTH2 app 60 seconds one time `code`
      * @param redirectUri OAUTH2 app `redirect_uri` callback
      */
-    fetchTokens(code, redirectUri) {
+    fetchTokens(code) {
         let param = {
             method: 'POST',
             headers: {
@@ -40,19 +71,26 @@ class CortexHubHelper {
             body: JSON.stringify({
                 "client_id": this.clientId,
                 "client_secret": this.clientSecret,
-                "redirect_uri": redirectUri,
+                "redirect_uri": this.idpCallbackUrl,
                 "grant_type": "authorization_code",
                 "code": code
             })
         };
         return this.credProvider.idpRefresh(param);
     }
+    /**
+     * Prepares an IDP authorization request
+     * @param tenantId Requesting Tenant ID (will be store in the authorization state)
+     * @param datalakeId Datalake ID willing to activate (will be store in the authorization state)
+     * @param scope OAUTH2 Data access Scope(s)
+     * @returns a URI ready to be consumed (typically to be used for a client 302 redirect)
+     */
     async idpAuthRequest(tenantId, datalakeId, scope) {
         let clientParams = await this.getDatalake(tenantId, datalakeId);
         if (!this.idpCallbackUrl) {
             throw new error_1.PanCloudError(credentialprovider_1.CortexCredentialProvider, 'CONFIG', `idpCallbackUrl was not provided in the ops passed to the constructor. Can't request auth without it.`);
         }
-        let stateId = await this.requestAuthState(tenantId, datalakeId);
+        let stateId = await this.requestAuthState({ tenantId: tenantId, datalakeId: datalakeId });
         let qsParams = {
             response_type: 'code',
             client_id: this.clientId,
@@ -62,16 +100,28 @@ class CortexHubHelper {
             state: stateId
         };
         let urlString = `${this.idpAuthUrl}?${querystring_1.stringify(qsParams)}`;
-        common_1.commonLogger.info(credentialprovider_1.CortexCredentialProvider, `Providing IDP Auth URL: ${urlString}`);
+        common_1.commonLogger.info(CortexHubHelper, `Providing IDP Auth URL: ${urlString}`);
         return new url_1.URL(urlString);
     }
-    async authCallbackHandler(req, resp, redirectUri, validateTenant = (req, tenantId) => true) {
+    /**
+     * ExpressJS handler (middleware) that deals with IDP Authentication Callback. The method
+     * relies on some properties and methods of `this` so be remember to `bind()` the method
+     * to the object when using it elsewhere
+     * @param req `express.Request` object. If `callbackTenantValidation` was set to
+     * true at class instantiation time, then the method expects a string-like field `K`
+     * in the `req.user` object containing the requesting Tenant ID. A field named `callbackIdp`
+     * containing a `HubIdpCallback` object with the processing result will be populated here.
+     * @param next next handler in the chain that will be called under any condition
+     */
+    async authCallbackHandler(req, resp, next) {
         let code = req.query.code;
         let state = req.query.state;
+        let callbackStatus;
         if (!(code && typeof code == 'string' && state && typeof state == 'string')) {
-            common_1.commonLogger.error(new error_1.PanCloudError(credentialprovider_1.CortexCredentialProvider, 'PARSER', `Either code or state are missing or not strings: state: ${state}`));
-            redirectUri.search = 'idperror=code or state missing';
-            resp.redirect(redirectUri.toString());
+            common_1.commonLogger.error(new error_1.PanCloudError(CortexHubHelper, 'PARSER', `Either code or state are missing or not strings: state: ${state}`));
+            callbackStatus = { error: 'code or state missing' };
+            req.callbackIdp = callbackStatus;
+            next();
             return;
         }
         let tenantId;
@@ -82,31 +132,60 @@ class CortexHubHelper {
         catch (e) {
             common_1.commonLogger.alert(CortexHubHelper, `Unable to restore state ${state} in callback helper`);
             common_1.commonLogger.error(error_1.PanCloudError.fromError(CortexHubHelper, e));
-            redirectUri.search = `idperror=unable to restore state ${state}`;
-            resp.redirect(redirectUri.toString());
+            callbackStatus = { error: `unable to restore state ${state}` };
+            req.callbackIdp = callbackStatus;
+            next();
             return;
         }
-        if (!validateTenant(req, tenantId)) {
-            common_1.commonLogger.alert(CortexHubHelper, `Tenant validation failed for tenantId: ${tenantId} in request ${JSON.stringify(req)}`);
-            redirectUri.search = `idperror=code activation does not belong to this tenantId`;
-            resp.redirect(redirectUri.toString());
-            return;
+        try {
+            await this.deleteAuthState(state);
+        }
+        catch (e) {
+            common_1.commonLogger.alert(CortexHubHelper, `Failed to delete state ${state} in callback helper`);
+            common_1.commonLogger.error(error_1.PanCloudError.fromError(CortexHubHelper, e));
+        }
+        if (this.callbackTenantValidation) {
+            let tKey = this.tenantKey;
+            if (tKey === undefined) {
+                common_1.commonLogger.alert(CortexHubHelper, `Cannot validate tenant because tenant key was not provided at instantiation time`);
+                callbackStatus = { error: 'tenant key is unknown' };
+                req.callbackIdp = callbackStatus;
+                next();
+                return;
+            }
+            if (!(req.user && req.user[tKey])) {
+                common_1.commonLogger.alert(CortexHubHelper, `Tenant validation failed: tenant key ${this.tenantKey} does not exist in request ${JSON.stringify(req.user)}`);
+                callbackStatus = { error: 'tenant key not present in request' };
+                req.callbackIdp = callbackStatus;
+                next();
+                return;
+            }
+            let reqTenantId = req.user[tKey];
+            if (!(typeof reqTenantId == 'string' && reqTenantId == tenantId)) {
+                common_1.commonLogger.alert(CortexHubHelper, `Tenant validation failed: state tenantId ${tenantId} not equal to request tenantId ${JSON.stringify(reqTenantId)}`);
+                callbackStatus = { error: 'tenantId in request does not match the one in the stored state' };
+                req.callbackIdp = callbackStatus;
+                next();
+                return;
+            }
         }
         let idpResponse;
         try {
-            idpResponse = await this.fetchTokens(code, redirectUri.toString());
+            idpResponse = await this.fetchTokens(code);
         }
         catch (e) {
             common_1.commonLogger.alert(CortexHubHelper, 'Unable to fetch credentials from IDP in callback helper');
             common_1.commonLogger.error(error_1.PanCloudError.fromError(CortexHubHelper, e));
-            redirectUri.search = `idperror=failed to exchange code for tokens`;
-            resp.redirect(redirectUri.toString());
+            callbackStatus = { error: 'failed to exchange code for tokens' };
+            req.callbackIdp = callbackStatus;
+            next();
             return;
         }
         if (!idpResponse.refresh_token) {
             common_1.commonLogger.alert(CortexHubHelper, 'Identity response does not include a refresh token');
-            redirectUri.search = `idperror=response does not include a refresh token`;
-            resp.redirect(redirectUri.toString());
+            callbackStatus = { error: 'response does not include a refresh token' };
+            req.callbackIdp = callbackStatus;
+            next();
             return;
         }
         let clientParams;
@@ -116,36 +195,42 @@ class CortexHubHelper {
         catch (e) {
             common_1.commonLogger.alert(CortexHubHelper, `Unable to get client params for ${tenantId}/${datalakeId}`);
             common_1.commonLogger.error(error_1.PanCloudError.fromError(CortexHubHelper, e));
-            redirectUri.search = `idperror=failed to augmentate the state`;
-            resp.redirect(redirectUri.toString());
+            callbackStatus = { error: 'failed to augmentate the state' };
+            req.callbackIdp = callbackStatus;
+            next();
             return;
         }
         try {
-            await this.credProvider.issueWithRefreshToken(datalakeId, clientParams.location.entryPoint, idpResponse.refresh_token);
-            await this.deleteAuthState(state);
-            redirectUri.search = `idpok=${datalakeId}`;
-            resp.redirect(redirectUri.toString());
+            await this.credProvider.issueWithRefreshToken(`${tenantId}@${datalakeId}`, clientParams.location.entryPoint, idpResponse.refresh_token, { accessToken: idpResponse.access_token, validUntil: idpResponse.validUntil });
+            callbackStatus = { datalakeId: datalakeId };
+            req.callbackIdp = callbackStatus;
+            next();
         }
         catch (e) {
             common_1.commonLogger.error(e);
-            redirectUri.search = 'idperror=error storing the oauth2 tokens';
-            resp.redirect(redirectUri.toString());
+            callbackStatus = { error: 'error storing the oauth2 tokens' };
+            req.callbackIdp = callbackStatus;
+            next();
         }
     }
+    /**
+     * Parses the CortexHub BASE64 params string into a CortexClientParams object
+     * @param queryString Input string
+     */
     paramsParser(queryString) {
         let b64Decoded = '';
         try {
             b64Decoded = Buffer.from(queryString, 'base64').toString();
         }
         catch (e) {
-            throw new error_1.PanCloudError(credentialprovider_1.CortexCredentialProvider, 'PARSER', `${queryString} is not a valid base64 string`);
+            throw new error_1.PanCloudError(CortexHubHelper, 'PARSER', `${queryString} is not a valid base64 string`);
         }
         let parsed = querystring_1.parse(b64Decoded);
         if (!(parsed.instance_id && typeof parsed.instance_id == 'string')) {
-            throw new error_1.PanCloudError(credentialprovider_1.CortexCredentialProvider, 'PARSER', `Missing mandatory instance_id in ${queryString}`);
+            throw new error_1.PanCloudError(CortexHubHelper, 'PARSER', `Missing mandatory instance_id in ${queryString}`);
         }
         if (!(parsed.region && typeof parsed.region == 'string')) {
-            throw new error_1.PanCloudError(credentialprovider_1.CortexCredentialProvider, 'PARSER', `Missing or invalid region in ${queryString}`);
+            throw new error_1.PanCloudError(CortexHubHelper, 'PARSER', `Missing or invalid region in ${queryString}`);
         }
         let cParams = {
             instance_id: parsed.instance_id,
@@ -166,9 +251,50 @@ class CortexHubHelper {
             cParams.customFields = customField;
         }
         catch (e) {
-            common_1.commonLogger.error(error_1.PanCloudError.fromError(credentialprovider_1.CortexCredentialProvider, e));
+            common_1.commonLogger.error(error_1.PanCloudError.fromError(CortexHubHelper, e));
         }
         return cParams;
+    }
+    /**
+     * Retrieves the list of datalakes registered under this tenant
+     * @param tenantId requesting Tenant ID
+     */
+    async listDatalake(tenantId) {
+        let response = await this._listDatalake(tenantId);
+        common_1.commonLogger.info(CortexHubHelper, `Successfully retrieved list of datalakes for tenant ${tenantId} from store`);
+        return response;
+    }
+    /**
+     * Gets metadata of a given Datalake ID as a `CortexClientParams` object
+     * @param tenantId requesting Tenant ID
+     * @param datalakeId ID of the Datalake
+     */
+    async getDatalake(tenantId, datalakeId) {
+        let response = await this._getDatalake(tenantId, datalakeId);
+        common_1.commonLogger.info(CortexHubHelper, `Successfully retrieved datalake ${tenantId}/${datalakeId} from store`);
+        return response;
+    }
+    /**
+     * Stores datalake metadata
+     * @param tenantId requesting Tenant ID
+     * @param datalakeId ID of the datalake
+     * @param clientParams metadata as a `CortexClientParams` object
+     */
+    async upsertDatalake(tenantId, datalakeId, clientParams) {
+        let response = await this._upsertDatalake(tenantId, datalakeId, clientParams);
+        common_1.commonLogger.info(CortexHubHelper, `Successfully upserted datalake ${tenantId}/${datalakeId} into store`);
+        return response;
+    }
+    /**
+     * Deletes a datalake metadata record
+     * @param tenantId requesting Tenant ID
+     * @param datalakeId ID of the datalake
+     */
+    async deleteDatalake(tenantId, datalakeId) {
+        await this.credProvider.deleteDatalake(datalakeId);
+        common_1.commonLogger.info(CortexHubHelper, `Successfully deleted datalake ${datalakeId} from credentials provider`);
+        await this._deleteDatalake(tenantId, datalakeId);
+        common_1.commonLogger.info(CortexHubHelper, `Successfully deleted datalake ${tenantId}/${datalakeId} from hub helper`);
     }
 }
 CortexHubHelper.className = 'CortexHubHelper';

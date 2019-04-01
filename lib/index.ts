@@ -25,5 +25,8 @@ export {
     CortexCredentialProvider, CredentialProviderOptions,
     CredentialsItem, RefreshResult, defaultCredentialsProviderFactory, isCredentialItem
 } from './credentialprovider'
-export { CortexClientParams, CortexHelperOptions, CortexHubHelper } from './hubhelper'
+export {
+    CortexClientParams, CortexHelperOptions, CortexHubHelper,
+    HubIdpCallback, HubIdpStateData, isCortexClientParams
+} from './hubhelper'
 export { fsCredentialsFactory } from './fscredentialprovider'

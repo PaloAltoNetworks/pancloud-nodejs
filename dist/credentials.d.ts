@@ -30,4 +30,10 @@ export declare abstract class Credentials implements PancloudClass {
      */
     abstract retrieveAccessToken(): Promise<void>;
 }
+/**
+ * Initializes a static (meant to be used for testing and quick starting) Credentials object. Please
+ * note that the returned object won't refresh the token at all.
+ * @param entryPoint Cortex Hub regional API entry point
+ * @param accessToken OAUTH2 `access_token` value.
+ */
 export declare function defaultCredentialsFactory(entryPoint: EntryPoint, accessToken: string): Credentials;
