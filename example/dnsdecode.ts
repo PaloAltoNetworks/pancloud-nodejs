@@ -1,4 +1,4 @@
-import { util } from 'pancloud-nodejs'
+import { Util } from 'pancloud-nodejs'
 
 let testEntries: any[] = [
     { "receive_time": 1547040279, "sessionid": 43930, "time_generated": 1547040231, "dns-rsp-reply-code": 0, "type": "DPI", "dns-rsp-transaction-id": 165, "content_ver": "8111-5239", "txn_start": 1547040231, "txn_id": 166, "dns-req-query-items": [{ "dns-req-query-name": { "value": "BmVtc3NhcwxiYW5jc2FiYWRlbGwDY29tAA==", "seqno": 12 }, "dns-req-query-type": 1 }], "dns-rsp-query-items": [{ "dns-rsp-query-name": { "value": "BmVtc3NhcwxiYW5jc2FiYWRlbGwDY29tAA==", "seqno": 12 }, "dns-rsp-query-type": 1 }], "dns-rsp-resource-record-items": [{ "dns-rsp-rr-name": { "value": "wAw=", "seqno": 41 }, "dns-rsp-rr-type": 5, "dns-rsp-rr-value": { "value": "CWVtc3Nhcy1pYQdhaW1hdGNowCA=", "seqno": 53 } }, { "dns-rsp-rr-name": { "value": "wDU=", "seqno": 73 }, "dns-rsp-rr-type": 5, "dns-rsp-rr-value": { "value": "CWVtc3Nhcy1pYQdhaW1hdGNoA25ldAA=", "seqno": 85 } }, { "dns-rsp-rr-name": { "value": "wFU=", "seqno": 108 }, "dns-rsp-rr-type": 5, "dns-rsp-rr-value": { "value": "CnRpZXIxLWV1dzEHaXJlbGFuZAhkZWxpdmVyecBf", "seqno": 120 } }, { "dns-rsp-rr-name": { "value": "wHg=", "seqno": 150 }, "dns-rsp-rr-type": 1, "dns-rsp-rr-value": { "value": "Nkg8Sg==", "seqno": 162 } }, { "dns-rsp-rr-name": { "value": "wHg=", "seqno": 166 }, "dns-rsp-rr-type": 1, "dns-rsp-rr-value": { "value": "NDDE8A==", "seqno": 178 } }, { "dns-rsp-rr-name": { "value": "wHg=", "seqno": 182 }, "dns-rsp-rr-type": 1, "dns-rsp-rr-value": { "value": "IvgzGw==", "seqno": 194 } }], "customer-id": "........", "serial": "", "receptor_txn_start": 1547040239, "subtype": "dns", "dns-req-transaction-id": 165, "dns-rsp-is-over-tcp": 0, "dns-req-is-over-tcp": 0, "client_sw": "8.1.4", "recsize": 1537 },
@@ -9,7 +9,7 @@ let testEntries: any[] = [
 ]
 
 testEntries.forEach(x => {
-    util.dnsDecode(x)
+    Util.dnsDecode(x)
     console.log('___')
     console.log(JSON.stringify(x, undefined, ' '))
 })

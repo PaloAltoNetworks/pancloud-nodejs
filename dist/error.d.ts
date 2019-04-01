@@ -1,38 +1,23 @@
-import { pancloudClass } from './common';
-export declare type sdkErr = ApplicationFrameworkError | PanCloudError;
-declare type sdkErrName = "ApplicationFrameworkError" | "PanCloudError";
-interface appFerr {
-    errorCode: string;
-    errorMessage: string;
-}
-interface sdkErrorObj {
-    getErrorCode(): string;
-    getErrorMessage(): string;
-    getSourceClass(): string;
-    setClassName(className: sdkErrName): void;
+import { PancloudClass } from './common';
+declare type SdkErrName = "PanCloudError" | "ApplicationFrameworkError";
+export declare abstract class SdkErr extends Error {
     name: string;
-}
-export declare function isSdkError(e: any): e is sdkErr;
-export declare class ApplicationFrameworkError extends Error implements appFerr, sdkErrorObj {
-    errorMessage: string;
-    errorCode: string;
-    sourceClass: string;
-    constructor(source: pancloudClass, afError: any);
+    protected errorCode: string;
+    protected errorMessage: string;
+    protected sourceClass: string;
+    constructor(message: string);
     getErrorCode(): string;
     getErrorMessage(): string;
     getSourceClass(): string;
-    setClassName(name: sdkErrName): void;
+    setClassName(name: SdkErrName): void;
 }
-declare type errCodes = "PARSER" | "IDENTITY" | "CONFIG" | "UNKNOWN";
-export declare class PanCloudError extends Error implements sdkErrorObj {
-    errorCode: errCodes;
-    errorMessage: string;
-    sourceClass: string;
-    constructor(source: pancloudClass, code: errCodes, message: string);
-    static fromError(sorce: pancloudClass, e: Error): PanCloudError;
-    getErrorCode(): string;
-    getErrorMessage(): string;
-    getSourceClass(): string;
-    setClassName(name: sdkErrName): void;
+export declare function isSdkError(e: any): e is SdkErr;
+export declare class ApplicationFrameworkError extends SdkErr {
+    constructor(source: PancloudClass, afError: any);
+}
+declare type ErrCodes = "PARSER" | "IDENTITY" | "CONFIG" | "UNKNOWN";
+export declare class PanCloudError extends SdkErr {
+    constructor(source: PancloudClass, code: ErrCodes, message: string);
+    static fromError(sorce: PancloudClass, e: Error): PanCloudError;
 }
 export {};

@@ -1,19 +1,10 @@
-import { embededCredentials, DirectorySyncService, ENTRYPOINT, logLevel } from 'pancloud-nodejs'
-import { c_id, c_secret, r_token, a_token } from './secrets'
+import { autoCredentials, DirectorySyncService, LogLevel } from 'pancloud-nodejs'
 
-const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
+const entryPoint = "https://api.us.paloaltonetworks.com"
 
 export async function main(): Promise<void> {
-    let c = await embededCredentials.factory({
-        client_id: c_id,
-        client_secret: c_secret,
-        refresh_token: r_token,
-        access_token: a_token
-    })
-    let dss = await DirectorySyncService.factory(entryPoint, {
-        credential: c
-        // level: logLevel.DEBUG
-    })
+    let c = await autoCredentials()
+    let dss = await DirectorySyncService.factory(c)
     let attr = await dss.domains()
     console.log("Sucessfully Received Domains")
     attr.forEach((v, i) => {

@@ -1,34 +1,48 @@
+// Copyright 2015-2019 Palo Alto Networks, Inc
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//       http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 /**
  * High level abstraction of the Application Framework Event Service
  */
 
 import { URL } from 'url'
-import { PATH, LOGTYPE, isKnownLogType, commonLogger, ENTRYPOINT } from './common'
-import { emitter, emitterOptions, emitterInterface, emitterStats, l2correlation } from './emitter'
+import { ApiPath, LogType, isKnownLogType, commonLogger, EntryPoint } from './common'
+import { Emitter, EmitterOptions, EmitterInterface, EmitterStats, L2correlation } from './emitter'
 import { PanCloudError } from './error'
 import { setTimeout, clearTimeout } from 'timers'
+import { Credentials } from './credentials';
 
 /**
  * Default amount of milliseconds to wait between ES AutoPoll events
  */
 const MSLEEP = 200;
-const esPath: PATH = "event-service/v1/channels"
+const ESPATH: ApiPath = "event-service/v1/channels"
 
 /**
  * Default Event Server {@link esPollOptions} options
  */
-let DEFAULT_PO: esPollOptions = { ack: false, pollTimeout: 1000 }
-let invalidTables: LOGTYPE[] = ["tms.analytics", "tms.config", "tms.system", "tms.threat"]
+let DEFAULT_PO: EsPollOptions = { ack: false, pollTimeout: 1000 }
+let invalidTables: LogType[] = ["tms.analytics", "tms.config", "tms.system", "tms.threat"]
 
 /**
  * Event Service emitted message interface
  */
-interface esEvent {
-    logType: LOGTYPE,
+interface EsEvent {
+    logType: LogType,
     event: any[]
 }
 
-function is_esEvent(obj: any): obj is esEvent {
+function isEsEvent(obj: any): obj is EsEvent {
     if (obj && typeof obj == "object") {
         if ("logType" in obj && typeof obj.logType == "string" && isKnownLogType(obj.logType)) {
             if ("event" in obj && typeof obj.event == "object" && obj.event instanceof Array) {
@@ -42,18 +56,55 @@ function is_esEvent(obj: any): obj is esEvent {
 /**
  * Interface that describes an Event Service filter
  */
-export interface esFilter {
+export interface EsFilter {
+    /**
+     * Map of filters. The map key must be a valid **string** from the **LogType** type.
+     *
+     * Consider using the **filterBuilder(EsFilterBuilderCfg)** method instead to assure a valid filter syntax
+     */
     filters: {
         [index: string]: {
+            /**
+             * You specify a filter using a SQL SELECT statement. You may optionally provide a WHERE predicate to
+             * this statement, but no other SQL SELECT clauses are supported. The WHERE predicate can contain only
+             * comparison and boolean operators: <, <=, >, >=, =, AND, OR, and NOT. Also, you cannot filter log fields.
+             * Regardless of what you express on the SELECT statement, you will receive entire log records as they exist
+             * when written to the Logging Service.
+             * 
+             * In the select statement, you provide a log type where you normally provide a table name.
+             * This log type must be enclosed by backticks (`)
+             */
             filter: string,
+            /**
+             * Identifies the maximum amount of time in milliseconds a poll
+             * request will wait for events. Note that if the limit specified by batchSize is
+             * met, this API will return without waiting for this full timeout value. Default is
+             * 60000ms (60 seconds). If 0 is used, poll requests always return immediately.
+             * The maximum timeout value is 60000
+             */
             timeout?: number,
+            /**
+             * Identifies the maximum number of events that the Event Service
+             * will return when you poll a channel. Default is 1. Minimum is 1
+             * 
+             * In the event that filters are specified with differing timeout and/or batchSize
+             * values, this API will return in the least possible time. That is, if one filter specifies
+             * a 1000 timeout value and another specifies 2000, this API will return in 1000
+             * milliseconds, or when a filter's batch size value is met, whichever is sooner.
+             */
             batchSize?: number
         }
     }[],
+    /**
+     * If true, the channel is flushed when filters are set. That is, if this field is true and
+     * this API reports success (200), all existing events in the channel are discarded. Do
+     * this if you are changing your filters to such a degree that you have no interest in
+     * events currently existing in the channel. Defaults to **false**
+     */
     flush?: boolean
 }
 
-function is_esFilter(obj: any): obj is esFilter {
+function isEsFilter(obj: any): obj is EsFilter {
     if (obj && typeof obj == "object") {
         if ("filters" in obj && typeof obj.filters == "object" && obj.filters instanceof Array) {
             let obj2 = obj.filters as {}[]
@@ -76,55 +127,157 @@ function is_esFilter(obj: any): obj is esFilter {
     return false
 }
 
-interface esPollOptions {
+/**
+ * Configure the Event Service poll operation
+ */
+interface EsPollOptions {
+    /**
+     * Integer representing the number of milliseconds for this API to wait before
+     * returning. This value has meaning only if the channel is empty of events when the
+     * poll operation begins. Default is 1000
+     */
     pollTimeout: number,
+    /**
+     * Boolean value to trigger an automatic **ack()** operation after each successfull poll
+     */
     ack: boolean
 }
 
-interface esFilterOptions {
+/**
+ * Interface with options to modify the way the SDK behaves when a filter is provided
+ */
+interface EsFilterOptions {
+    /**
+     * Object with optional callback (event receiver) functions
+     */
     callBack?: {
-        event?: ((e: emitterInterface<any[]>) => void),
-        pcap?: ((p: emitterInterface<Buffer>) => void),
-        corr?: ((e: emitterInterface<l2correlation[]>) => void)
+        /**
+         * A receiver for the **EVENT_EVENT** topic
+         */
+        event?: ((e: EmitterInterface<any[]>) => void),
+        /**
+         * A receiver for the **PCAP_EVENT** topic
+         */
+        pcap?: ((p: EmitterInterface<Buffer>) => void),
+        /**
+         * A receiver for the **CORR_EVENT** topic
+         */
+        corr?: ((e: EmitterInterface<L2correlation[]>) => void)
     },
-    sleep?: number,
-    poolOptions?: esPollOptions
+    /**
+     * Parameters to be used by autopoll in case any callBack is provided
+     */
+    poolOptions?: EsPollOptions
 }
 
 /**
- * Interface that describes a valid Event Service filter configuration
+ * Low-level Interface that describes a valid Event Service filter configuration
  */
-export interface esFilterCfg {
-    filter: esFilter,
-    filterOptions: esFilterOptions
+export interface EsFilterCfg {
+    /**
+     * Map of filters. The map key must be a valid **string** from the **LogType** type. Consider using
+     * the **filterBuilder(EsFilterBuilderCfg)** method instead to assure a valid filter syntax
+     */
+    filter: EsFilter,
+    /**
+     * Object with filter configuration options
+     */
+    filterOptions?: EsFilterOptions
 }
 
 /**
- * High level interface to build a valid {@link esFilterCfg} object using the {@link EventService.filterBuilder} method
+ * High level interface to build a valid **EsFilterCfg** object using the **EventService.filterBuilder()** method
  */
-export interface esFilterBuilderCfg {
+export interface EsFilterBuilderCfg {
+    /**
+     * Array of objects. Each entry will become an Event Service filter
+     */
     filter: {
-        table: LOGTYPE,
+        /**
+         * A valid **string** from the LogType options
+         */
+        table: LogType,
+        /**
+         * If provided, it will become the predicate of the WHERE clause
+         */
         where?: string,
+        /**
+         * Identifies the maximum amount of time in milliseconds a poll
+         * request will wait for events. Note that if the limit specified by batchSize is
+         * met, this API will return without waiting for this full timeout value. Default is
+         * 60000ms (60 seconds). If 0 is used, poll requests always return immediately.
+         * The maximum timeout value is 60000
+         */
         timeout?: number,
+        /**
+         * Identifies the maximum number of events that the Event Service
+         * will return when you poll a channel. Default is 1. Minimum is 1
+         * 
+         * In the event that filters are specified with differing timeout and/or batchSize
+         * values, this API will return in the least possible time. That is, if one filter specifies
+         * a 1000 timeout value and another specifies 2000, this API will return in 1000
+         * milliseconds, or when a filter's batch size value is met, whichever is sooner.
+         */
         batchSize?: number
     }[],
-    filterOptions: esFilterOptions,
+    /**
+     * Interface with options to modify the way the SDK behaves when a filter is provided
+     */
+    filterOptions?: EsFilterOptions,
+    /**
+     * If true, the channel is flushed when filters are set. That is, if this field is true and
+     * this API reports success (200), all existing events in the channel are discarded. Do
+     * this if you are changing your filters to such a degree that you have no interest in
+     * events currently existing in the channel. Defaults to **false**
+     */
     flush?: boolean
 }
 
-export interface esOptions extends emitterOptions {
+/**
+ * Options for the EventService class factory
+ */
+export interface EsOptions extends EmitterOptions {
+    /**
+     * The *channel-id* to be used. Defaults to **'EventFilter'**
+     */
     channelId?: string
+    /**
+     * Amount of milliseconds to wait between consecutive autopoll() attempts. Defaults to **200ms**
+     */
+    autoPollSleep?: number
 }
 
-export interface esStats extends emitterStats {
+/** 
+ * Runtime statistics provided by the EventService class
+ */
+interface EsStats extends EmitterStats {
+    /**
+     * Number of records retrieved from the Application Framework
+     */
     records: number,
+    /**
+     * Number of **POST** calls to the **\/poll** entry point
+     */
     polls: number,
-    deletes: number,
+    /**
+     * Number of **PUT** calls to the **\/filters** entry point
+     */
     filtersets: number,
+    /**
+     * Number of **GET** calls to the **\/filters** entry point
+     */
     filtergets: number,
+    /**
+     * Number of **POST** calls to the **\/ack** entry point
+     */
     acks: number,
+    /**
+     * Number of **POST** calls to the **\/nack** entry point
+     */
     nacks: number,
+    /**
+     * Number of **POST** calls to the **\/flush** entry point
+     */
     flushes: number
 }
 
@@ -132,32 +285,35 @@ export interface esStats extends emitterStats {
  * High-level class that implements an Application Framework Event Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-export class EventService extends emitter implements Iterable<Promise<esEvent[]>> {
+export class EventService extends Emitter implements Iterable<Promise<EsEvent[]>> {
     private filterPath: string
     private pollPath: string
     private ackPath: string
     private nackPath: string
     private flushPath: string
-    private popts: esPollOptions
-    private ap_sleep: number
-    private tout: NodeJS.Timeout | undefined
+    private popts: EsPollOptions
+    private apSleep: number
+    private tout: NodeJS.Timer | undefined
     private polling: boolean
-    private eevent: emitterInterface<any[]>
-    protected stats: esStats
+    private eevent: EmitterInterface<any[]>
+    protected stats: EsStats
 
-    private constructor(baseUrl: string, ops: esOptions) {
-        super(baseUrl, ops)
+    /**
+     * Private constructor. Use the class's static `factory()` method instead
+     */
+    private constructor(cred: Credentials, baseUrl: string, ops?: EsOptions) {
+        super(cred, baseUrl, ops)
         this.className = "EventService"
-        if (!ops.channelId) { ops.channelId = 'EventFilter' }
-        this.setChannel(ops.channelId)
+        let channelId = 'EventFilter'
+        if (ops && ops.channelId) { channelId = ops.channelId }
+        this.setChannel(channelId)
         this.popts = DEFAULT_PO
-        this.ap_sleep = MSLEEP
+        this.apSleep = (ops && ops.autoPollSleep) ? ops.autoPollSleep : MSLEEP
         this.polling = false
         this.eevent = { source: "EventService" }
         this.stats = {
             acks: 0,
             nacks: 0,
-            deletes: 0,
             filtergets: 0,
             filtersets: 0,
             flushes: 0,
@@ -177,39 +333,42 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
 
     /**
      * Static factory method to instantiate an Event Service object
-     * @param esOps Instantitation configuration object accepting parameters from {@link core.coreOptions} and
-     * {@link esOptions}
-     * @returns an instantiated {@link EventService} object
+     * @param cred the **Credentials** object that will be used to obtain JWT access tokens
+     * @param esOps a valid **EsOptions** configuration objet
+     * @returns an instantiated **EventService** object
      */
-    static factory(entryPoint: ENTRYPOINT, esOps: esOptions): EventService {
-        return new EventService(new URL(esPath, entryPoint).toString(), esOps)
+    static factory(cred: Credentials, esOps?: EsOptions): EventService {
+        commonLogger.info({ className: 'EventService' }, `Creating new EventService object for entryPoint ${cred.getEntryPoint()}`)
+        return new EventService(cred, ESPATH, esOps)
     }
 
     /**
      * @returns the current Event Service filter configuration
      */
-    async getFilters(): Promise<esFilter> {
+    async getFilters(): Promise<EsFilter> {
         this.stats.filtergets++
-        let r_json = await this.fetchGetWrap(this.filterPath);
-        this.lastResponse = r_json
-        if (is_esFilter(r_json)) {
-            return r_json
+        commonLogger.info(this, '*filters* get request')
+        let rJson = await this.fetchGetWrap(this.filterPath);
+        this.lastResponse = rJson
+        if (isEsFilter(rJson)) {
+            return rJson
         }
-        throw new PanCloudError(this, 'PARSER', `response is not a valid ES Filter: ${JSON.stringify(r_json)}`)
+        throw new PanCloudError(this, 'PARSER', `response is not a valid ES Filter: ${JSON.stringify(rJson)}`)
     }
 
     /**
-     * Sets a new Event Service configuration
+     * Low-level interface to the Event Service set filter API method. Consider using
+     * the **filterBuilder(EsFilterBuilderCfg)** method instead to assure a valid filter syntax
      * @param fcfg The new service configuration. If the configuration includes a valid callBack handler (currently
      * only {@link esFilterCfg.filterOptions.eventCallBack} is supported) then the class AutoPoll feature is turned on
      * @returns a promise to the current Event Service to ease promise chaining
      */
-    async setFilters(fcfg: esFilterCfg): Promise<EventService> {
+    async setFilters(fcfg: EsFilterCfg): Promise<EventService> {
+        commonLogger.info(this, `*filters* put request. Filter: ${JSON.stringify(fcfg)}`)
         this.stats.filtersets++
-        this.popts = (fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO
-        this.ap_sleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP
-        await this.void_X_Operation(this.filterPath, JSON.stringify(fcfg.filter), 'PUT')
-        if (fcfg.filterOptions.callBack) {
+        this.popts = (fcfg.filterOptions && fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO
+        await this.voidXOperation(this.filterPath, JSON.stringify(fcfg.filter), 'PUT')
+        if (fcfg.filterOptions && fcfg.filterOptions.callBack) {
             this.newEmitter(fcfg.filterOptions.callBack.event, fcfg.filterOptions.callBack.pcap, fcfg.filterOptions.callBack.corr)
             EventService.autoPoll(this)
         } else if (this.tout) {
@@ -225,11 +384,11 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
      * @param fbcfg The filter description object
      * @returns a promise to the current Event Service to ease promise chaining
      */
-    public filterBuilder(fbcfg: esFilterBuilderCfg): Promise<EventService> {
+    public filterBuilder(fbcfg: EsFilterBuilderCfg): Promise<EventService> {
         if (fbcfg.filter.some(f => invalidTables.includes(f.table))) {
             throw new PanCloudError(this, 'CONFIG', 'PanCloudError() only "tms.traps" is accepted in the EventService')
         }
-        let fcfg: esFilterCfg = {
+        let fcfg: EsFilterCfg = {
             filter: {
                 filters: fbcfg.filter.map(e => {
                     let m: {
@@ -262,7 +421,7 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
      * @returns a promise to the current Event Service to ease promise chaining
      */
     public clearFilter(flush = false): Promise<EventService> {
-        let fcfg: esFilterCfg = { filter: { filters: [] }, filterOptions: {} }
+        let fcfg: EsFilterCfg = { filter: { filters: [] }, filterOptions: {} }
         if (flush) {
             fcfg.filter.flush = true
         }
@@ -273,28 +432,34 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
     /**
      * Performs an `ACK` operation on the Event Service
      */
-    public async ack(): Promise<void> {
+    public async ack(): Promise<EventService> {
         this.stats.acks++
-        return this.void_X_Operation(this.ackPath)
+        commonLogger.info(this, '*ack* get request')
+        await this.voidXOperation(this.ackPath)
+        return this
     }
 
     /**
      * Performs a `NACK` operation on the Event Service
      */
-    public async nack(): Promise<void> {
+    public async nack(): Promise<EventService> {
         this.stats.nacks++
-        return this.void_X_Operation(this.nackPath)
+        commonLogger.info(this, '*nack* get request')
+        await this.voidXOperation(this.nackPath)
+        return this
     }
 
     /**
      * Performs a `FLUSH` operation on the Event Service
      */
-    public async flush(): Promise<void> {
+    public async flush(): Promise<EventService> {
         this.stats.flushes++
-        return this.void_X_Operation(this.flushPath)
+        commonLogger.info(this, '*flush* get request')
+        await this.voidXOperation(this.flushPath)
+        return this
     }
 
-    public *[Symbol.iterator](): IterableIterator<Promise<esEvent[]>> {
+    public *[Symbol.iterator](): IterableIterator<Promise<EsEvent[]>> {
         while (true) {
             yield this.poll()
         }
@@ -304,17 +469,18 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
      * Performs a `POLL` operation on the Event Service
      * @returns a promise that resolves to an array of {@link esEvent} objects
      */
-    public async poll(): Promise<esEvent[]> {
+    public async poll(): Promise<EsEvent[]> {
         this.stats.polls++
+        commonLogger.info(this, '*poll* get request')
         let body: string = '{}'
         if (this.popts.pollTimeout != 1000) {
             body = JSON.stringify({ pollTimeout: this.popts.pollTimeout })
         }
-        let r_json = await this.fetchPostWrap(this.pollPath, body);
-        this.lastResponse = r_json
-        if (r_json && typeof r_json == "object" && r_json instanceof Array) {
-            if (r_json.every(e => {
-                if (is_esEvent(e)) {
+        let rJson = await this.fetchPostWrap(this.pollPath, body);
+        this.lastResponse = rJson
+        if (rJson && typeof rJson == "object" && rJson instanceof Array) {
+            if (rJson.every(e => {
+                if (isEsEvent(e)) {
                     this.stats.records += e.event.length
                     return true
                 }
@@ -323,7 +489,7 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
                 if (this.popts.ack) {
                     await this.ack()
                 }
-                return r_json as esEvent[]
+                return rJson as EsEvent[]
             }
         }
         throw new PanCloudError(this, 'PARSER', 'Response is not a valid ES Event array')
@@ -332,7 +498,7 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
     private static async autoPoll(es: EventService): Promise<void> {
         es.polling = true
         es.tout = undefined
-        let e: esEvent[] = []
+        let e: EsEvent[] = []
         try {
             e = await es.poll()
             e.forEach(i => {
@@ -347,7 +513,7 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
             if (e.length) {
                 setImmediate(EventService.autoPoll, es)
             } else {
-                es.tout = setTimeout(EventService.autoPoll, es.ap_sleep, es)
+                es.tout = setTimeout(EventService.autoPoll, es.apSleep, es)
             }
         }
     }
@@ -372,7 +538,7 @@ export class EventService extends emitter implements Iterable<Promise<esEvent[]>
         EventService.autoPoll(this)
     }
 
-    public getEsStats(): esStats {
+    public getEsStats(): EsStats {
         return this.stats
     }
 }

@@ -1,14 +1,15 @@
-import { embededCredentials, LoggingService, ENTRYPOINT, lsQuery, emitterInterface, logLevel, util } from 'pancloud-nodejs'
-import { c_id, c_secret, r_token, a_token } from './secrets'
+import { autoCredentials, LoggingService, LsQueryCfg, EmitterInterface, LogLevel, Util } from 'pancloud-nodejs'
 
-const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
 let now = Math.floor(Date.now() / 1000)
 
-let query: lsQuery = {
+let query: LsQueryCfg = {
     query: "select * from panw.dpi where subtype='dns' limit 40",
     startTime: now - 3600,
     endTime: now,
-    maxWaitTime: 1000
+    maxWaitTime: 1000,
+    callBack: {
+        event: receiver
+    }
 }
 
 let decodingErrors = 0
@@ -16,27 +17,18 @@ let decodingErrors = 0
  * Use the loggingservice.js launcher to call this main() function
  */
 export async function main(): Promise<void> {
-    let c = await embededCredentials.factory({
-        client_id: c_id,
-        client_secret: c_secret,
-        refresh_token: r_token,
-        access_token: a_token
-    })
-    let ls = await LoggingService.factory(entryPoint, {
-        credential: c,
-        fetchTimeout: 45000
-        // level: logLevel.DEBUG
-    })
-    await ls.query(query, { event: receiver }) // Schedule query 1 and register the receiver
+    let c = await autoCredentials()
+    let ls = await LoggingService.factory(c, { fetchTimeout: 45000 })
+    await ls.query(query) // Schedule query 1 and register the receiver
     console.log("Logging Service stats")
     console.log(JSON.stringify(ls.getLsStats(), undefined, " "))
     console.log(`DNS Decoding Errorr: ${decodingErrors}`)
 }
 
-function receiver(e: emitterInterface<any[]>): void {
+function receiver(e: EmitterInterface<any[]>): void {
     if (e.message) {
         e.message.forEach(x => {
-            if (!util.dnsDecode(x)) {
+            if (!Util.dnsDecode(x)) {
                 decodingErrors++
             }
         })

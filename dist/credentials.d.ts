@@ -2,84 +2,38 @@
  * credentials module implements a class to keep all Application Framework credentials operations
  * bound together.
  */
+import { PancloudClass, EntryPoint } from './common';
 /**
- * Configuration options to instantiate the credentials class. Find usage in the {@link Credentials} constructor
+ * Base abstract CredentialS class
  */
-export interface credOptions {
-    client_id: string;
-    client_secret: string;
-    access_token?: string;
-    refresh_token?: string;
-    idp_token_url?: string;
-    redirect_uri?: string;
-    code?: string;
-}
-export declare abstract class Credentials {
-    private valid_until;
-    private access_token;
+export declare abstract class Credentials implements PancloudClass {
+    private validUntil;
+    private entryPoint;
+    private accessToken;
     className: string;
-    constructor(access_token: string, expires_in?: number);
-    private static valid_until;
-    protected set_access_token(access_token: string, expires_in?: number): void;
-    get_access_token(): string;
-    get_expiration(): number;
+    private guardTime;
+    constructor(entryPoint: EntryPoint, guardTime?: number);
+    protected setAccessToken(accessToken: string, validUntil: number): void;
+    /**
+     * Returns the current access token
+     */
+    getAccessToken(): Promise<string>;
+    getExpiration(): Promise<number>;
+    getEntryPoint(): EntryPoint;
+    /**
+     * Checks the access token expiration time and automaticaly refreshes it if going to expire
+     * inside the next 5 minutes
+     */
     autoRefresh(): Promise<boolean>;
-    abstract refresh_access_token(): Promise<void>;
-    abstract revoke_tokens(): Promise<void>;
+    /**
+     * Triggers an access token refresh request
+     */
+    abstract retrieveAccessToken(): Promise<void>;
 }
 /**
- * Credential class keeps data and methods needed to maintain Application Framework access token alive
+ * Initializes a static (meant to be used for testing and quick starting) Credentials object. Please
+ * note that the returned object won't refresh the token at all.
+ * @param entryPoint Cortex Hub regional API entry point
+ * @param accessToken OAUTH2 `access_token` value.
  */
-export declare class embededCredentials extends Credentials {
-    private refresh_token;
-    private client_id;
-    private client_secret;
-    private idp_token_url;
-    static className: string;
-    /**
-     * class constructor not exposed. You must use the static {@link Credentials.factory} instead
-     * @param client_id Mandatory. Application Framework's `client_id` string
-     * @param client_secret Mandatory. Application Framework's `client_secret` string
-     * @param access_token Optional. If not provided then the factory method will use the `refresh_token` to
-     * get a new one at instantiation time.
-     * @param refresh_token Mandatory. The factory method also supports fetching the `refresh_token` if the OAUTH2
-     * one time code is provided
-     * @param idp_token_url Optional. If not provided then the constant {@link IDP_TOKEN_URL} will be used instead
-     */
-    private constructor();
-    /**
-     * Factory method to instantiate a new {@link Credentials} class based on the options provided
-     * @param opt {@link Credentials} class instantiation options
-     * @returns a {@link Credentials} class instantiated either with the provided `access_token` and
-     * `refresh_token` or fetching a fresh `access_token` if only the `refresh_token` is provided or fetching
-     * a new credential set of the OAUTH2 `code` is provided
-     */
-    static factory(opt: credOptions): Promise<Credentials>;
-    /**
-     * Static class method to exchange a 60 seconds OAUTH2 code for valid credentials
-     * @param client_id OAUTH2 app `client_id`
-     * @param client_secret OAUTH2 app `client_secret`
-     * @param code OAUTH2 app 60 seconds one time `code`
-     * @param idp_token_url OAUTH2 Identity Provider URL entry point
-     * @param redirect_uri OAUTH2 app `redirect_uri` callback
-     * @returns a new set of tokens
-     */
-    private static fetch_tokens;
-    /**
-     * Implements the Application Framework OAUTH2 refresh token operation
-     * @param client_id OAUTH2 app `client_id`
-     * @param client_secret OAUTH2 app `client_secret`
-     * @param refresh_token Current OAUTH2 app `refresh_token` value
-     * @param idp_token_url OAUTH2 Identity Provider URL entry point
-     * @returns a new set of tokens
-     */
-    private static refresh_tokens;
-    /**
-     * Attempts to refresh the current `access_token`. It might throw exceptions
-     */
-    refresh_access_token(): Promise<void>;
-    /**
-     * Use this method when a customer is unsubscribing the OAUTH2 application to revoke the granted `refresh_token`
-     */
-    revoke_tokens(): Promise<void>;
-}
+export declare function defaultCredentialsFactory(entryPoint: EntryPoint, accessToken: string): Credentials;
