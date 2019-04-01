@@ -1,17 +1,12 @@
-import { embededCredentials } from 'pancloud-nodejs'
-import { c_id, c_secret, r_token, a_token } from './secrets'
+import { defaultCredentialsFactory } from 'pancloud-nodejs'
+import { env } from 'process'
 
 export async function main(): Promise<void> {
-    let c = await embededCredentials.factory({
-        client_id: c_id,
-        client_secret: c_secret,
-        access_token: a_token,
-        refresh_token: r_token
-    })
-    let d = new Date(c.get_expiration() * 1000)
-    console.log(`Access Token: ${c.get_access_token()}\nValid until: ${d.toISOString()}`)
-    console.log('... calling refresh token')
-    await c.refresh_access_token()
-    d = new Date(c.get_expiration() * 1000)
-    console.log(`Access Token: ${c.get_access_token()}\nValid until: ${d.toISOString()}`)
+    let accessToken = env['PAN_ACCESS_TOKEN']
+    if (!accessToken) {
+        throw new Error(`environmental variable PAN_ACCESS_TOKEN does not exist is null`)
+    }
+    let c = await defaultCredentialsFactory('https://api.us.paloaltonetworks.com', accessToken)
+    let d = new Date(await c.getExpiration() * 1000)
+    console.log(`Access Token: ${await c.getAccessToken()}\nValid until: ${d.toISOString()}`)
 }

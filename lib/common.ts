@@ -1,17 +1,31 @@
+// Copyright 2015-2019 Palo Alto Networks, Inc
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//       http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 /**
  * Provides common resources for other modules in the pancloud SDK
  */
 
-import { sdkErr } from './error'
+import { SdkErr, PanCloudError } from './error'
+import { createHash } from 'crypto'
 
 /**
  * A pancloud class must provide a className property that will be used to format its log messages
  */
-export interface pancloudClass {
+export interface PancloudClass {
     className: string
 }
 
-export enum logLevel {
+export enum LogLevel {
     DEBUG = 0,
     INFO = 1,
     ALERT = 2,
@@ -21,12 +35,12 @@ export enum logLevel {
 /**
  * User-provided logger classes are supported as long as they adhere to this interface
  */
-export interface pancloudLogger {
-    level: logLevel,
-    error(e: sdkErr): void,
-    alert(source: pancloudClass, message: string, name?: string): void,
-    info(source: pancloudClass, message: string, name?: string): void,
-    debug(source: pancloudClass, message: string, name?: string, payload?: any): void
+export interface PancloudLogger {
+    level: LogLevel,
+    error(e: SdkErr): void,
+    alert(source: PancloudClass, message: string, name?: string): void,
+    info(source: PancloudClass, message: string, name?: string): void,
+    debug(source: PancloudClass, message: string, name?: string, payload?: any): void
 }
 
 const LTYPES = {
@@ -57,27 +71,31 @@ const LTYPES = {
 /**
  * Convenience type to guide the developer using the right entry points
  */
-export type ENTRYPOINT = 'https://api.eu.paloaltonetworks.com' | 'https://api.us.paloaltonetworks.com'
+export type EntryPoint = 'https://api.eu.paloaltonetworks.com' | 'https://api.us.paloaltonetworks.com'
+export const region2EntryPoint: { [region: string]: EntryPoint } = {
+    'americas': 'https://api.us.paloaltonetworks.com',
+    'europe': 'https://api.eu.paloaltonetworks.com'
+}
 
-/**
- * Convenience type to guide the developer using the right paths
- */
-export type PATH = "event-service/v1/channels" | "logging-service/v1/queries" | "directory-sync-service/v1"
+export type OAUTH2SCOPE = 'logging-service:read' | 'logging-service:write' |
+    'event-service:read' | 'directory-sync-service:read'
+
+export type ApiPath = "event-service/v1/channels" | "logging-service/v1" | "directory-sync-service/v1"
 
 /**
  * Convenience type to guide the developer using the common log types
  */
-export type LOGTYPE = keyof typeof LTYPES
+export type LogType = keyof typeof LTYPES
 
-export function isKnownLogType(t: string): t is LOGTYPE {
+export function isKnownLogType(t: string): t is LogType {
     return LTYPES.hasOwnProperty(t)
 }
 
 /**
  * Centralized logging capability for the whole pancloud SDK
  */
-class sdkLogger implements pancloudLogger {
-    level: logLevel
+class SdkLogger implements PancloudLogger {
+    level: LogLevel
     private stackTrace: boolean
 
     /**
@@ -85,30 +103,30 @@ class sdkLogger implements pancloudLogger {
      * @param level only messages with a level equal or avobe this provided value will be loogged
      * @param stackTrace boolean value to toggle stacktrace logging
      */
-    constructor(level: logLevel, stackTrace = true) {
+    constructor(level: LogLevel, stackTrace = true) {
         this.level = level
         this.stackTrace = stackTrace
     }
 
-    error(e: sdkErr): void {
+    error(e: SdkErr): void {
         this.format(e.getSourceClass(),
-            e.getErrorMessage(), logLevel.ERROR,
+            e.getErrorMessage(), LogLevel.ERROR,
             e.name, e.getErrorCode(), undefined, e.stack)
     }
 
-    alert(source: pancloudClass, message: string, name?: string): void {
-        this.format(source.className, message, logLevel.ALERT, name)
+    alert(source: PancloudClass, message: string, name?: string): void {
+        this.format(source.className, message, LogLevel.ALERT, name)
     }
 
-    info(source: pancloudClass, message: string, name?: string): void {
-        this.format(source.className, message, logLevel.INFO, name)
+    info(source: PancloudClass, message: string, name?: string): void {
+        this.format(source.className, message, LogLevel.INFO, name)
     }
 
-    debug(source: pancloudClass, message: string, name?: string, payload?: any): void {
-        this.format(source.className, message, logLevel.DEBUG, name, undefined, payload)
+    debug(source: PancloudClass, message: string, name?: string, payload?: any): void {
+        this.format(source.className, message, LogLevel.DEBUG, name, undefined, payload)
     }
 
-    private format(source: string, message: string, level: logLevel, name?: string, code?: string, payload?: any, stack?: string) {
+    private format(source: string, message: string, level: LogLevel, name?: string, code?: string, payload?: any, stack?: string) {
         if (level >= this.level) {
             let output: { [i: string]: string } = {
                 source,
@@ -142,12 +160,12 @@ class sdkLogger implements pancloudLogger {
                 finalOutput += ` payload=${payloadOut}`
             }
             switch (level) {
-                case logLevel.ERROR: {
+                case LogLevel.ERROR: {
                     console.error(finalOutput)
                     break
                 }
-                case logLevel.ALERT:
-                case logLevel.INFO: {
+                case LogLevel.ALERT:
+                case LogLevel.INFO: {
                     console.info(finalOutput)
                     break
                 }
@@ -165,13 +183,13 @@ class sdkLogger implements pancloudLogger {
 /**
  * Instantiate a module-provided logger at load time
  */
-export let commonLogger: pancloudLogger = new sdkLogger(logLevel.INFO, false)
+export let commonLogger: PancloudLogger = new SdkLogger(LogLevel.INFO, false)
 
 /**
  * Developer might decide to change the loglevel of the logger object at runtime
  * @param newLevel the new log level
  */
-export function setLogLevel(newLevel: logLevel): void {
+export function setLogLevel(newLevel: LogLevel): void {
     commonLogger.level = newLevel
 }
 
@@ -179,7 +197,7 @@ export function setLogLevel(newLevel: logLevel): void {
  * Changes the common logger variable to a user-provided object
  * @param logger user provided pancloudLogger compliant object to be used for SDK logging
  */
-export function setLogger(logger: pancloudLogger): void {
+export function setLogger(logger: PancloudLogger): void {
     commonLogger = logger
 }
 
@@ -191,7 +209,7 @@ export function setLogger(logger: pancloudLogger): void {
  * @param handler function that implements the operation
  * @param params additional arguments to be passed to the handler function
  */
-export async function retrier<T, O>(source: pancloudClass, n = 3, delay = 100, handler: (...args: T[]) => Promise<O>, ...params: T[]): Promise<O> {
+export async function retrier<T, O>(source: PancloudClass, n = 3, delay = 100, handler: (...args: T[]) => Promise<O>, ...params: T[]): Promise<O> {
     let a = n
     let lastError: Error | undefined = undefined
     while (a > 0) {
@@ -207,4 +225,26 @@ export async function retrier<T, O>(source: pancloudClass, n = 3, delay = 100, h
         a--
     }
     throw (lastError) ? lastError : new Error('reties exhausted')
+}
+
+export function expTokenExtractor(source: PancloudClass, token: string): number {
+    let parts = token.split('.')
+    if (parts.length != 3) {
+        throw new PanCloudError(source, 'PARSER', 'Not a valid JWT token format')
+    }
+    let expAttribute: any
+    try {
+        expAttribute = JSON.parse(Buffer.from(parts[1], 'base64').toString()).exp
+    } catch {
+        throw new PanCloudError(source, 'PARSER', 'Not a valid JWT token format')
+    }
+    if (typeof expAttribute == 'number') {
+        return expAttribute
+    }
+    throw new PanCloudError(source, 'PARSER', 'JWT token does not have a valid "exp" field')
+}
+
+export function uid(): string {
+    let data = `pancloud${Date.now()}nodejs`
+    return createHash('sha1').update(data).digest('base64')
 }

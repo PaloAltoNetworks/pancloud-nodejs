@@ -1,3 +1,16 @@
+// Copyright 2015-2019 Palo Alto Networks, Inc
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//       http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 /**
  * Utility collection
  */
@@ -6,19 +19,19 @@ import { Buffer } from "buffer";
 import { commonLogger } from "./common";
 import { PanCloudError } from "./error";
 
-interface decoDnsItem {
+interface DecoDnsItem {
     seqno: number
     value: string
 }
 
-function isDecoDnsItem(item: any): item is decoDnsItem {
+function isDecoDnsItem(item: any): item is DecoDnsItem {
     return item.seqno && item.value && typeof (item.seqno) == "number" && typeof (item.value) == "string"
 }
 
 /**
  * Class containing a static public method with utilities
  */
-export class util {
+export class Util {
     private static typeAlias: { [i: string]: string } = {
         1: "A",
         28: "AAAA",
@@ -120,7 +133,7 @@ export class util {
             let itemType = item[type_property] as number
             Object.keys(item).forEach(key => {
                 if (key == type_property) {
-                    item[key] = util.typeAlias[item[key]]
+                    item[key] = Util.typeAlias[item[key]]
                     return
                 }
                 let dDnsItem = item[key]
@@ -129,7 +142,7 @@ export class util {
                     offsets[dDnsItem.seqno] = label
                     if (key == name_property) {
                         try {
-                            item[key].value = util.dnsResolve(label, offsets)
+                            item[key].value = Util.dnsResolve(label, offsets)
                         } catch {
                             throw new Error(`Unable to decode ${JSON.stringify(item)}`)
                         }
@@ -156,7 +169,7 @@ export class util {
                         return
                     }
                     try {
-                        dDnsItem.value = util.dnsResolve(label, offsets)
+                        dDnsItem.value = Util.dnsResolve(label, offsets)
                     } catch {
                         throw new Error(`Unable to decode ${JSON.stringify(item)}`)
                     }
@@ -177,14 +190,14 @@ export class util {
         let decoded = true
         try {
             if (event['dns-req-query-items']) {
-                util.dnsProcessElement(event['dns-req-query-items'], {}, 'dns-req-query-name', 'dns-req-query-type')
+                Util.dnsProcessElement(event['dns-req-query-items'], {}, 'dns-req-query-name', 'dns-req-query-type')
             }
             let offsets: { [i: number]: Uint8Array } = {}
             if (event['dns-rsp-query-items']) {
-                util.dnsProcessElement(event['dns-rsp-query-items'], offsets, 'dns-rsp-query-name', 'dns-rsp-query-type')
+                Util.dnsProcessElement(event['dns-rsp-query-items'], offsets, 'dns-rsp-query-name', 'dns-rsp-query-type')
             }
             if (event['dns-rsp-resource-record-items']) {
-                util.dnsProcessElement(event['dns-rsp-resource-record-items'], offsets, 'dns-rsp-rr-name', 'dns-rsp-rr-type')
+                Util.dnsProcessElement(event['dns-rsp-resource-record-items'], offsets, 'dns-rsp-rr-name', 'dns-rsp-rr-type')
             }
         } catch (e) {
             commonLogger.error(PanCloudError.fromError({ className: "utilityclass" }, e))

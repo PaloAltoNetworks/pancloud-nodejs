@@ -1,8 +1,9 @@
 import * as cred_basic from './credential_basic'
-import * as cred_autorefresh from './credential_autorefresh'
+import * as cred_fs from './credential_fs'
+
 const examples: { [i: string]: () => Promise<void> } = {
     "BASIC": cred_basic.main,
-    "AUTOREFRESH": cred_autorefresh.main
+    "FS": cred_fs.main
 }
 
 if (process.argv.length < 3 || !Object.keys(examples).includes(process.argv[2])) {

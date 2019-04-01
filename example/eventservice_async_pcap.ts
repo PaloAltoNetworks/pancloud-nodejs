@@ -1,10 +1,7 @@
-import { embededCredentials, EventService, ENTRYPOINT, esFilterBuilderCfg, emitterInterface, logLevel } from 'pancloud-nodejs'
-import { c_id, c_secret, r_token, a_token } from './secrets'
+import { autoCredentials, EventService, EsFilterBuilderCfg, EmitterInterface, LogLevel } from 'pancloud-nodejs'
 import { writeFileSync } from 'fs'
 
-const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
-
-let builderCfg: esFilterBuilderCfg = {
+let builderCfg: EsFilterBuilderCfg = {
     filter: [
         { table: "panw.threat", timeout: 1000 }],
     filterOptions: {
@@ -23,17 +20,8 @@ let builderCfg: esFilterBuilderCfg = {
  * Use the enventservice.js launcher to call this main() function
  */
 export async function main(): Promise<void> {
-    let c = await embededCredentials.factory({
-        client_id: c_id,
-        client_secret: c_secret,
-        refresh_token: r_token,
-        access_token: a_token
-    })
-    let es = await EventService.factory(entryPoint, {
-        credential: c,
-        fetchTimeout: 45000
-        // level: logLevel.DEBUG
-    })
+    let c = await autoCredentials()
+    let es = await EventService.factory(c)
     await es.filterBuilder(builderCfg)
     console.log("Set the filter and registered the async pcap receiver")
     await new Promise<void>(resolve => {
@@ -51,7 +39,7 @@ export async function main(): Promise<void> {
 
 let pcapCounter = 0
 
-function receiver(e: emitterInterface<Buffer>): void {
+function receiver(e: EmitterInterface<Buffer>): void {
     if (e.message) {
         writeFileSync("pcap" + ("00" + pcapCounter++).substr(-3) + ".pcap", e.message)
         console.log(`Received PCAP body of ${e.message.length} bytes`)

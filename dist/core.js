@@ -1,48 +1,54 @@
 "use strict";
+// Copyright 2015-2019 Palo Alto Networks, Inc
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//       http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
  * Implements the abstract coreClass that implements common methods for higher-end classes like Event Service
  * and Logging Service
  */
-const fetch = require("node-fetch");
+const fetch_1 = require("./fetch");
 const error_1 = require("./error");
 const common_1 = require("./common");
 /**
  * This class should not be used directly. It is meant to be extended. Use higher-level classes like LoggingService
  * or EventService
  */
-class coreClass {
+class CoreClass {
     /**
      *
+     * @param cred credentials object instance that will provide the needed JWT access_token
      * @param ops configuration options for this instance
      */
-    constructor(baseUrl, ops) {
+    constructor(cred, basePath, ops) {
         this.className = "coreClass";
-        this.cred = ops.credential;
-        this.baseUrl = baseUrl;
-        if (ops.level != undefined && ops.level != common_1.logLevel.INFO) {
+        this.cred = cred;
+        this.baseUrl = new URL(basePath, cred.getEntryPoint()).toString();
+        if (ops && ops.level != undefined && ops.level != common_1.LogLevel.INFO) {
             common_1.commonLogger.level = ops.level;
         }
-        if (ops.autoRefresh == undefined) {
-            this.autoR = true;
-        }
-        else {
-            this.autoR = ops.autoRefresh;
-        }
-        this.retrierCount = ops.retrierCount;
-        this.retrierDelay = ops.retrierDelay;
-        this.fetchTimeout = ops.fetchTimeout;
+        this.retrierCount = (ops) ? ops.retrierCount : undefined;
+        this.retrierDelay = (ops) ? ops.retrierDelay : undefined;
+        this.fetchTimeout = (ops) ? ops.fetchTimeout : undefined;
         this.stats = {
             apiTransactions: 0
         };
-        this.setFetchHeaders();
     }
     /**
      * Prepares the HTTP headers. Mainly used to keep the Autorization header (bearer access-token)
      */
-    setFetchHeaders() {
+    async setFetchHeaders() {
         this.fetchHeaders = {
-            'Authorization': 'Bearer ' + this.cred.get_access_token(),
+            'Authorization': 'Bearer ' + await this.cred.getAccessToken(),
             'Content-Type': 'application/json'
         };
         common_1.commonLogger.info(this, 'updated authorization header');
@@ -51,50 +57,51 @@ class coreClass {
      * Triggers the credential object access-token refresh procedure and updates the HTTP headers
      */
     async refresh() {
-        await this.cred.refresh_access_token();
-        this.setFetchHeaders();
+        await this.cred.retrieveAccessToken();
+        await this.setFetchHeaders();
     }
     async checkAutoRefresh() {
-        if (this.autoR) {
-            if (await this.cred.autoRefresh()) {
-                this.setFetchHeaders();
-            }
+        if (await this.cred.autoRefresh()) {
+            await this.setFetchHeaders();
         }
     }
     async fetchXWrap(method, path, body) {
         let url = this.baseUrl + ((path) ? path : '');
         this.stats.apiTransactions++;
         await this.checkAutoRefresh();
-        let rinit = {
+        if (!this.fetchHeaders) {
+            await this.setFetchHeaders();
+        }
+        let rInit = {
             headers: this.fetchHeaders,
             method: method
         };
         if (this.fetchTimeout) {
-            rinit.timeout = this.fetchTimeout;
+            rInit.timeout = this.fetchTimeout;
         }
         if (body) {
-            rinit.body = body;
+            rInit.body = body;
         }
         common_1.commonLogger.debug(this, `fetch operation to ${url}`, method, body);
-        let r = await common_1.retrier(this, this.retrierCount, this.retrierDelay, fetch.default, url, rinit);
-        let r_text = await r.text();
-        if (r_text.length == 0) {
-            common_1.commonLogger.info(this, 'fetch response is null');
+        let r = await common_1.retrier(this, this.retrierCount, this.retrierDelay, fetch_1.fetch, url, rInit);
+        let rText = await r.text();
+        if (rText.length == 0) {
+            common_1.commonLogger.debug(this, 'fetch response is null');
             return null;
         }
-        let r_json;
+        let rJson;
         try {
-            r_json = JSON.parse(r_text);
+            rJson = JSON.parse(rText);
         }
         catch (exception) {
             throw new error_1.PanCloudError(this, 'PARSER', `Invalid JSON: ${exception.message}`);
         }
         if (!r.ok) {
-            common_1.commonLogger.alert(this, r_text, "FETCHXWRAP");
-            throw new error_1.ApplicationFrameworkError(this, r_json);
+            common_1.commonLogger.alert(this, rText, "FETCHXWRAP");
+            throw new error_1.ApplicationFrameworkError(this, rJson);
         }
-        common_1.commonLogger.debug(this, 'fetch response', undefined, r_json);
-        return r_json;
+        common_1.commonLogger.debug(this, 'fetch response', undefined, rJson);
+        return rJson;
     }
     /**
      * Convenience method that abstracts a GET operation to the Application Framework. Captures both non JSON responses
@@ -129,9 +136,9 @@ class coreClass {
     /**
      * Convenience method that abstracts a DELETE operation to the Application Framework
      */
-    async void_X_Operation(path, payload, method = "POST") {
+    async voidXOperation(path, payload, method = 'POST') {
         let r_json = await this.fetchXWrap(method, path, payload);
         this.lastResponse = r_json;
     }
 }
-exports.coreClass = coreClass;
+exports.CoreClass = CoreClass;

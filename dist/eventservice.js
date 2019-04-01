@@ -1,9 +1,17 @@
 "use strict";
-/**
- * High level abstraction of the Application Framework Event Service
- */
+// Copyright 2015-2019 Palo Alto Networks, Inc
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//       http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 Object.defineProperty(exports, "__esModule", { value: true });
-const url_1 = require("url");
 const common_1 = require("./common");
 const emitter_1 = require("./emitter");
 const error_1 = require("./error");
@@ -12,13 +20,13 @@ const timers_1 = require("timers");
  * Default amount of milliseconds to wait between ES AutoPoll events
  */
 const MSLEEP = 200;
-const esPath = "event-service/v1/channels";
+const ESPATH = "event-service/v1/channels";
 /**
  * Default Event Server {@link esPollOptions} options
  */
 let DEFAULT_PO = { ack: false, pollTimeout: 1000 };
 let invalidTables = ["tms.analytics", "tms.config", "tms.system", "tms.threat"];
-function is_esEvent(obj) {
+function isEsEvent(obj) {
     if (obj && typeof obj == "object") {
         if ("logType" in obj && typeof obj.logType == "string" && common_1.isKnownLogType(obj.logType)) {
             if ("event" in obj && typeof obj.event == "object" && obj.event instanceof Array) {
@@ -28,7 +36,7 @@ function is_esEvent(obj) {
     }
     return false;
 }
-function is_esFilter(obj) {
+function isEsFilter(obj) {
     if (obj && typeof obj == "object") {
         if ("filters" in obj && typeof obj.filters == "object" && obj.filters instanceof Array) {
             let obj2 = obj.filters;
@@ -53,19 +61,23 @@ function is_esFilter(obj) {
  * High-level class that implements an Application Framework Event Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-class EventService extends emitter_1.emitter {
-    constructor(baseUrl, ops) {
-        super(baseUrl, ops);
+class EventService extends emitter_1.Emitter {
+    /**
+     * Private constructor. Use the class's static `factory()` method instead
+     */
+    constructor(cred, baseUrl, ops) {
+        super(cred, baseUrl, ops);
         this.className = "EventService";
-        if (!ops.channelId) {
-            ops.channelId = 'EventFilter';
+        let channelId = 'EventFilter';
+        if (ops && ops.channelId) {
+            channelId = ops.channelId;
         }
-        this.setChannel(ops.channelId);
+        this.setChannel(channelId);
         this.popts = DEFAULT_PO;
-        this.ap_sleep = MSLEEP;
+        this.apSleep = (ops && ops.autoPollSleep) ? ops.autoPollSleep : MSLEEP;
         this.polling = false;
         this.eevent = { source: "EventService" };
-        this.stats = Object.assign({ acks: 0, nacks: 0, deletes: 0, filtergets: 0, filtersets: 0, flushes: 0, polls: 0, records: 0 }, this.stats);
+        this.stats = Object.assign({ acks: 0, nacks: 0, filtergets: 0, filtersets: 0, flushes: 0, polls: 0, records: 0 }, this.stats);
     }
     setChannel(channelId) {
         this.filterPath = `/${channelId}/filters`;
@@ -76,37 +88,40 @@ class EventService extends emitter_1.emitter {
     }
     /**
      * Static factory method to instantiate an Event Service object
-     * @param esOps Instantitation configuration object accepting parameters from {@link core.coreOptions} and
-     * {@link esOptions}
-     * @returns an instantiated {@link EventService} object
+     * @param cred the **Credentials** object that will be used to obtain JWT access tokens
+     * @param esOps a valid **EsOptions** configuration objet
+     * @returns an instantiated **EventService** object
      */
-    static factory(entryPoint, esOps) {
-        return new EventService(new url_1.URL(esPath, entryPoint).toString(), esOps);
+    static factory(cred, esOps) {
+        common_1.commonLogger.info({ className: 'EventService' }, `Creating new EventService object for entryPoint ${cred.getEntryPoint()}`);
+        return new EventService(cred, ESPATH, esOps);
     }
     /**
      * @returns the current Event Service filter configuration
      */
     async getFilters() {
         this.stats.filtergets++;
-        let r_json = await this.fetchGetWrap(this.filterPath);
-        this.lastResponse = r_json;
-        if (is_esFilter(r_json)) {
-            return r_json;
+        common_1.commonLogger.info(this, '*filters* get request');
+        let rJson = await this.fetchGetWrap(this.filterPath);
+        this.lastResponse = rJson;
+        if (isEsFilter(rJson)) {
+            return rJson;
         }
-        throw new error_1.PanCloudError(this, 'PARSER', `response is not a valid ES Filter: ${JSON.stringify(r_json)}`);
+        throw new error_1.PanCloudError(this, 'PARSER', `response is not a valid ES Filter: ${JSON.stringify(rJson)}`);
     }
     /**
-     * Sets a new Event Service configuration
+     * Low-level interface to the Event Service set filter API method. Consider using
+     * the **filterBuilder(EsFilterBuilderCfg)** method instead to assure a valid filter syntax
      * @param fcfg The new service configuration. If the configuration includes a valid callBack handler (currently
      * only {@link esFilterCfg.filterOptions.eventCallBack} is supported) then the class AutoPoll feature is turned on
      * @returns a promise to the current Event Service to ease promise chaining
      */
     async setFilters(fcfg) {
+        common_1.commonLogger.info(this, `*filters* put request. Filter: ${JSON.stringify(fcfg)}`);
         this.stats.filtersets++;
-        this.popts = (fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO;
-        this.ap_sleep = (fcfg.filterOptions.sleep) ? fcfg.filterOptions.sleep : MSLEEP;
-        await this.void_X_Operation(this.filterPath, JSON.stringify(fcfg.filter), 'PUT');
-        if (fcfg.filterOptions.callBack) {
+        this.popts = (fcfg.filterOptions && fcfg.filterOptions.poolOptions) ? fcfg.filterOptions.poolOptions : DEFAULT_PO;
+        await this.voidXOperation(this.filterPath, JSON.stringify(fcfg.filter), 'PUT');
+        if (fcfg.filterOptions && fcfg.filterOptions.callBack) {
             this.newEmitter(fcfg.filterOptions.callBack.event, fcfg.filterOptions.callBack.pcap, fcfg.filterOptions.callBack.corr);
             EventService.autoPoll(this);
         }
@@ -164,21 +179,27 @@ class EventService extends emitter_1.emitter {
      */
     async ack() {
         this.stats.acks++;
-        return this.void_X_Operation(this.ackPath);
+        common_1.commonLogger.info(this, '*ack* get request');
+        await this.voidXOperation(this.ackPath);
+        return this;
     }
     /**
      * Performs a `NACK` operation on the Event Service
      */
     async nack() {
         this.stats.nacks++;
-        return this.void_X_Operation(this.nackPath);
+        common_1.commonLogger.info(this, '*nack* get request');
+        await this.voidXOperation(this.nackPath);
+        return this;
     }
     /**
      * Performs a `FLUSH` operation on the Event Service
      */
     async flush() {
         this.stats.flushes++;
-        return this.void_X_Operation(this.flushPath);
+        common_1.commonLogger.info(this, '*flush* get request');
+        await this.voidXOperation(this.flushPath);
+        return this;
     }
     *[Symbol.iterator]() {
         while (true) {
@@ -191,15 +212,16 @@ class EventService extends emitter_1.emitter {
      */
     async poll() {
         this.stats.polls++;
+        common_1.commonLogger.info(this, '*poll* get request');
         let body = '{}';
         if (this.popts.pollTimeout != 1000) {
             body = JSON.stringify({ pollTimeout: this.popts.pollTimeout });
         }
-        let r_json = await this.fetchPostWrap(this.pollPath, body);
-        this.lastResponse = r_json;
-        if (r_json && typeof r_json == "object" && r_json instanceof Array) {
-            if (r_json.every(e => {
-                if (is_esEvent(e)) {
+        let rJson = await this.fetchPostWrap(this.pollPath, body);
+        this.lastResponse = rJson;
+        if (rJson && typeof rJson == "object" && rJson instanceof Array) {
+            if (rJson.every(e => {
+                if (isEsEvent(e)) {
                     this.stats.records += e.event.length;
                     return true;
                 }
@@ -208,7 +230,7 @@ class EventService extends emitter_1.emitter {
                 if (this.popts.ack) {
                     await this.ack();
                 }
-                return r_json;
+                return rJson;
             }
         }
         throw new error_1.PanCloudError(this, 'PARSER', 'Response is not a valid ES Event array');
@@ -233,7 +255,7 @@ class EventService extends emitter_1.emitter {
                 setImmediate(EventService.autoPoll, es);
             }
             else {
-                es.tout = timers_1.setTimeout(EventService.autoPoll, es.ap_sleep, es);
+                es.tout = timers_1.setTimeout(EventService.autoPoll, es.apSleep, es);
             }
         }
     }

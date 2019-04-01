@@ -1,9 +1,6 @@
-import { embededCredentials, EventService, ENTRYPOINT, emitterInterface, l2correlation, esFilterBuilderCfg } from 'pancloud-nodejs'
-import { c_id, c_secret, r_token, a_token } from './secrets'
+import { autoCredentials, EventService, EmitterInterface, L2correlation, EsFilterBuilderCfg } from 'pancloud-nodejs'
 
-const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
-
-let builderCfg: esFilterBuilderCfg = {
+let builderCfg: EsFilterBuilderCfg = {
     filter: [
         { table: "panw.traffic", timeout: 1000 },
         { table: "panw.dpi", timeout: 1000 }],
@@ -22,17 +19,8 @@ let builderCfg: esFilterBuilderCfg = {
  * Use the enventservice.js launcher to call this main() function
  */
 export async function main(): Promise<void> {
-    let c = await embededCredentials.factory({
-        client_id: c_id,
-        client_secret: c_secret,
-        refresh_token: r_token,
-        access_token: a_token
-    })
-    let es = await EventService.factory(entryPoint, {
-        credential: c,
-        fetchTimeout: 45000
-        // level: logLevel.DEBUG
-    })
+    let c = await autoCredentials()
+    let es = await EventService.factory(c)
     await es.filterBuilder(builderCfg)
     console.log("Set the filter and registered the async event receiver")
     await new Promise<void>(resolve => {
@@ -54,7 +42,7 @@ let l2l3map: { l2src: { [l2: string]: { [v: string]: boolean } }, l2dst: { [l2: 
 
 let corrEventCounter = 0
 
-function corrReceicer(e: emitterInterface<l2correlation[]>): void {
+function corrReceicer(e: EmitterInterface<L2correlation[]>): void {
     if (e.message) {
         corrEventCounter += e.message.length
         console.log(`${corrEventCounter} correlation events received so far`)

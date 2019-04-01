@@ -3,3 +3,4 @@ secrets.*
 example/*js
 lib/*js
 node_modules/
+extras/

@@ -1,10 +1,11 @@
+/// <reference types="node" />
 /**
  * High level abstraction of the Application Framework Logging Service
  */
-/// <reference types="node" />
-import { LOGTYPE, ENTRYPOINT } from './common';
-import { emitter, emitterOptions, emitterInterface, emitterStats, l2correlation } from './emitter';
-import { sdkErr } from './error';
+import { LogType } from './common';
+import { Emitter, EmitterOptions, EmitterInterface, EmitterStats, L2correlation } from './emitter';
+import { SdkErr } from './error';
+import { Credentials } from './credentials';
 declare const jStatus: {
     'RUNNING': string;
     'FINISHED': string;
@@ -16,16 +17,30 @@ declare const jStatus: {
  * Convenience type to guide the user to all possible LS JOB status value
  */
 export declare type jobStatus = keyof typeof jStatus;
-export interface lsStats extends emitterStats {
-    queries: number;
+/** Runtime statistics provided by the LoggingService class */
+interface LsStats extends EmitterStats {
+    /**
+     * Number of records retrieved from the Application Framework
+     */
     records: number;
+    /**
+     * Number of **POST** calls to the **\/** entry point
+     */
+    queries: number;
+    /**
+     * Number of **GET** calls to the **\/** entry point
+     */
     polls: number;
+    /**
+     * Number of **DELETE** calls to the **\/** entry point
+     */
     deletes: number;
+    writes: number;
 }
 /**
  * Interface to provide a query
  */
-export interface lsQuery {
+export interface LsQueryCfg {
     /**
      * SQL SELECT statement that describes the log data you want to retrieve
      */
@@ -59,7 +74,8 @@ export interface lsQuery {
     client?: string;
     /**
      * Adds context to a query (such as a transaction ID or other unique identifier) which
-     * has meaning to your application. If specified, this field must contained a wellformed JSON object. The data specified on this field is echoed back in all result
+     * has meaning to your application. If specified, this field must contained a wellformed
+     * JSON object. The data specified on this field is echoed back in all result
      * sequences returned in response to the query
      */
     clientParameters?: any;
@@ -67,15 +83,37 @@ export interface lsQuery {
      * Not mandatory but highly recommended for async operations. Providing the log type here will
      * prevent the event receiver from having to "guess" the log type by scanning the results
      */
-    logType?: LOGTYPE;
+    logType?: LogType;
+    /**
+     * Object with optional callback (event receiver) functions. If present, the call to **query()**
+     * will toggle the auto-poll feature for this query and registers the provided handlres in the
+     * correspondnig topic so it can receive result events. Providing 'null' will trigger the
+     * auto-poll feature for the query but without registering any handler to the 'event' topic
+     * (to be used when a handler is already registered to receive events)
+     */
+    callBack?: {
+        /**
+         * A receiver for the **EVENT_EVENT** topic
+         */
+        event?: ((e: EmitterInterface<any[]>) => void);
+        /**
+         * A receiver for the **PCAP_EVENT** topic
+         */
+        pcap?: ((p: EmitterInterface<Buffer>) => void);
+        /**
+         * A receiver for the **CORR_EVENT** topic
+         */
+        corr?: ((e: EmitterInterface<L2correlation[]>) => void);
+    };
 }
 /**
  * main properties of the Logging Service job result schema
  */
-export interface jobResult {
+export interface JobResult {
     queryId: string;
     sequenceNo: number;
     queryStatus: jobStatus;
+    clientParameters: any;
     result: {
         esResult: null | {
             hits: {
@@ -88,49 +126,67 @@ export interface jobResult {
         };
     };
 }
-interface lsops extends emitterOptions {
-    apSleep?: number;
+/**
+ * A success response indicates that the Logging Service received your entire payload, and that the payload
+ * contained a valid JSON array of valid JSON objects. Success here does not necessarily mean that your log
+ * records have been successfully processed by the Logging Service and can now be queried
+ */
+interface WriteResult {
+    /**
+     * This field value is always true
+     */
+    success: boolean;
+    /**
+     * Array that contains all of the log record UUIDs that were received in the request. If
+     * you identified a UUID field when you registered your app, and you provide UUIDs
+     * on your log records, then those UUIDs are included in this array. Otherwise, UUIDs
+     * assigned by the Logging Service are included in this array
+     */
+    uuids: string[];
+}
+/**
+ * Options for the LoggingService class factory
+ */
+export interface LsOptions extends EmitterOptions {
+    /**
+     * Amount of milliseconds to wait between consecutive autopoll() attempts. Defaults to **200ms**
+     */
+    autoPollSleep?: number;
 }
 /**
  * High-level class that implements an Application Framework Logging Service client. It supports both sync
  * and async features. Objects of this class must be obtained using the factory static method
  */
-export declare class LoggingService extends emitter {
+export declare class LoggingService extends Emitter {
     private eevent;
-    private ap_sleep;
+    private apSleep;
     private tout;
     private jobQueue;
     private lastProcElement;
     private pendingQueries;
-    protected stats: lsStats;
+    protected stats: LsStats;
+    /**
+     * Private constructor. Use the class's static `factory()` method instead
+     */
     private constructor();
     /**
-     * Logging Service object factory method
-     * @param ops configuration object for the instance to be created
-     * @returns a new Logging Service instance object with the provided configuration
+     * Static factory method to instantiate an Event Service object
+     * @param cred the **Credentials** object that will be used to obtain JWT access tokens
+     * @param lsOps a valid **LsOptions** configuration objet
+     * @returns an instantiated **LoggingService** object
      */
-    static factory(entryPoint: ENTRYPOINT, ops: lsops): LoggingService;
+    static factory(cred: Credentials, lsOps?: LsOptions): LoggingService;
     /**
      * Performs a Logging Service query call and returns a promise with the response.
-     * If the "eCallBack" handler is provided then it will be registered into the event topic and
+     * If the _CallBack_ handler is provided then it will be registered into the event topic and
      * this query will be placed into the auto-poll queue (returned events will be emitted to the handler)
      * @param cfg query configuration object
-     * @param eCallBack toggles the auto-poll feature for this query and registers the handler in the 'event' topic
+     * @param CallBack toggles the auto-poll feature for this query and registers the handler in the 'event' topic
      * so it can receive result events. Providing 'null' will trigger the auto-poll feature for the query but without
      * registering any handler to the 'event' topic (to be used when a handler is already registered to receive events)
-     * @param sleep if provided (in milliseconds), it will change this Logging Service object auto-poll delay
-     * value (the amount of time between consecutive polls). Please note that this may affect other queries already in
-     * the auto-poll queue
-     * @param fetchTimeout milliseconds before issuing a timeout exeception. The operation is wrapped by a 'retrier'
-     * that will retry the operation. User can change default retry parameters (3 times / 100 ms) using the right
-     * class configuration properties
      * @returns a promise with the Application Framework response
      */
-    query(cfg: lsQuery, CallBack?: {
-        event?: ((e: emitterInterface<any[]>) => void);
-        pcap?: ((p: emitterInterface<Buffer>) => void);
-        corr?: ((e: emitterInterface<l2correlation[]>) => void);
-    }): Promise<jobResult>;
+    query(cfg: LsQueryCfg): Promise<JobResult>;
     /**
      * Used for synchronous operations (when the auto-poll feature of a query is not used)
      * @param qid the query id to poll results from
@@ -150,20 +206,32 @@ export declare class LoggingService extends emitter {
      * completion of the HTTP request
      * @returns a promise with the Application Framework response
      */
-    poll(qid: string, sequenceNo: number, maxWaitTime?: number): Promise<jobResult>;
+    poll(qid: string, sequenceNo: number, maxWaitTime?: number): Promise<JobResult>;
     private static autoPoll;
     /**
      * User can use this method to cancel (remove) a query from the auto-poll queue
      * @param qid query id to be cancelled
      */
-    cancelPoll(qid: string, err?: sdkErr): Promise<void>;
+    cancelPoll(qid: string, err?: SdkErr): Promise<void>;
     /**
      * Use this method to cancel a running query
      * @param qid the query id to be cancelled
      */
-    delete_query(queryId: string): Promise<void>;
+    deleteQuery(queryId: string): Promise<void>;
+    /**
+     * Use this method to write data to the Logging service
+     * @param vendorName The vendor name you were given by Palo Alto Networks to use for
+     * writing logrecords
+     * @param logType The type of log records you're writing to the Logging Service. The type that you
+     * provide here must be the log type that you registered with Palo Alto Networks.
+     * Also, all log records submitted for this request must conform to this type
+     * @param data The logs that you write to the Logging Service must at a minimum include the
+     * primary timestamp and log type fields that you identified when you registered your app with
+     * Palo Alto Networks. Refer to the documentation for more details
+     */
+    write(vendorName: string, logType: string, data: any[]): Promise<WriteResult>;
     private eventEmitter;
     private emitterCleanup;
-    getLsStats(): lsStats;
+    getLsStats(): LsStats;
 }
 export {};

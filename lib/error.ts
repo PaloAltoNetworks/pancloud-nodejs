@@ -1,40 +1,68 @@
-import { pancloudClass } from './common'
+// Copyright 2015-2019 Palo Alto Networks, Inc
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//       http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
-export type sdkErr = ApplicationFrameworkError | PanCloudError
-type sdkErrName = "ApplicationFrameworkError" | "PanCloudError"
+import { PancloudClass } from './common'
 
-interface appFerr {
-    errorCode: string,
+type SdkErrName = "PanCloudError" | "ApplicationFrameworkError"
+
+interface AppFerr {
+    errorCode: string
     errorMessage: string
 }
 
-function isError(obj: any): obj is appFerr {
+function isError(obj: any): obj is AppFerr {
     return typeof obj.errorCode == 'string' && typeof obj.errorMessage == 'string'
 }
 
-interface sdkErrorObj {
-    getErrorCode(): string
-    getErrorMessage(): string
-    getSourceClass(): string
-    setClassName(className: sdkErrName): void
+export abstract class SdkErr extends Error {
     name: string
+    protected errorCode: string
+    protected errorMessage: string
+    protected sourceClass: string
+
+    constructor(message: string) {
+        super(message)
+    }
+
+    getErrorCode(): string {
+        return this.errorCode
+    }
+
+    getErrorMessage(): string {
+        return this.errorMessage
+    }
+
+    getSourceClass(): string {
+        return this.sourceClass
+    }
+
+    setClassName(name: SdkErrName): void {
+        this.name = name
+    }
 }
 
-export function isSdkError(e: any): e is sdkErr {
+export function isSdkError(e: any): e is SdkErr {
     return e &&
         e.getErrorCode && typeof e.getErrorCode == "function" &&
         e.getErrorMessage && typeof e.getErrorMessage == "function" &&
         e.getSourceClass && typeof e.getSourceClass == "function" &&
         e.name && typeof e.name == "string" &&
-        (e.name == <sdkErrName>"PanCloudError" || e.name == <sdkErrName>"ApplicationFrameworkError")
+        (e.name == <SdkErrName>"PanCloudError" || e.name == <SdkErrName>"ApplicationFrameworkError")
 }
 
-export class ApplicationFrameworkError extends Error implements appFerr, sdkErrorObj {
-    errorMessage: string
-    errorCode: string
-    sourceClass: string
+export class ApplicationFrameworkError extends SdkErr {
 
-    constructor(source: pancloudClass, afError: any) {
+    constructor(source: PancloudClass, afError: any) {
         if (isError(afError)) {
             super(afError.errorMessage)
             this.errorMessage = afError.errorMessage
@@ -47,32 +75,13 @@ export class ApplicationFrameworkError extends Error implements appFerr, sdkErro
         this.sourceClass = source.className
         this.setClassName("ApplicationFrameworkError")
     }
-
-    getErrorCode(): string {
-        return this.errorCode
-    }
-
-    getErrorMessage(): string {
-        return this.errorMessage
-    }
-
-    getSourceClass(): string {
-        return this.sourceClass
-    }
-
-    setClassName(name: sdkErrName): void {
-        this.name = name
-    }
 }
 
-type errCodes = "PARSER" | "IDENTITY" | "CONFIG" | "UNKNOWN"
+type ErrCodes = "PARSER" | "IDENTITY" | "CONFIG" | "UNKNOWN"
 
-export class PanCloudError extends Error implements sdkErrorObj {
-    errorCode: errCodes
-    errorMessage: string
-    sourceClass: string
+export class PanCloudError extends SdkErr {
 
-    constructor(source: pancloudClass, code: errCodes, message: string) {
+    constructor(source: PancloudClass, code: ErrCodes, message: string) {
         super(message)
         this.errorCode = code
         this.errorMessage = message
@@ -80,25 +89,9 @@ export class PanCloudError extends Error implements sdkErrorObj {
         this.setClassName("PanCloudError")
     }
 
-    static fromError(sorce: pancloudClass, e: Error): PanCloudError {
+    static fromError(sorce: PancloudClass, e: Error): PanCloudError {
         let newpce = new PanCloudError(sorce, "UNKNOWN", e.message)
         newpce.stack = e.stack
         return newpce
-    }
-
-    getErrorCode(): string {
-        return this.errorCode
-    }
-
-    getErrorMessage(): string {
-        return this.errorMessage
-    }
-
-    getSourceClass(): string {
-        return this.sourceClass
-    }
-
-    setClassName(name: sdkErrName): void {
-        this.name = name
     }
 }

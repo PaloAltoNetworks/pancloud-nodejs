@@ -1,11 +1,8 @@
-/**
- * Utility collection
- */
 /// <reference types="node" />
 /**
  * Class containing a static public method with utilities
  */
-export declare class util {
+export declare class Util {
     private static typeAlias;
     private static dnsResolve;
     private static dnsProcessElement;

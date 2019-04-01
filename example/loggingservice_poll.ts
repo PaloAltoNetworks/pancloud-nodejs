@@ -1,11 +1,9 @@
-import { embededCredentials, LoggingService, ENTRYPOINT, lsQuery, logLevel } from 'pancloud-nodejs'
-import { c_id, c_secret, r_token, a_token } from './secrets'
+import { autoCredentials, LoggingService, LsQueryCfg, LogLevel } from 'pancloud-nodejs'
 
-const entryPoint: ENTRYPOINT = "https://api.us.paloaltonetworks.com"
 let ls: LoggingService
 let now = Math.floor(Date.now() / 1000)
 
-let query: lsQuery = {
+let query: LsQueryCfg = {
     query: 'select * from panw.traffic limit 40000',
     startTime: now - 36000,
     endTime: now,
@@ -16,16 +14,8 @@ let query: lsQuery = {
  * Use the loggingservice.js launcher to call this main() function
  */
 export async function main(): Promise<void> {
-    let c = await embededCredentials.factory({
-        client_id: c_id,
-        client_secret: c_secret,
-        refresh_token: r_token,
-        access_token: a_token
-    })
-    let ls = await LoggingService.factory(entryPoint, {
-        credential: c,
-        // level: logLevel.DEBUG
-    })
+    let c = await autoCredentials()
+    let ls = await LoggingService.factory(c, { fetchTimeout: 45000 })
     let job = await ls.query(query)
     let seq = job.sequenceNo
     if (job.queryStatus == "FINISHED") {
@@ -48,7 +38,7 @@ export async function main(): Promise<void> {
         }
     }
     try {
-        await ls.delete_query(job.queryId)
+        await ls.deleteQuery(job.queryId)
     } catch (loopException) { }
     if (loopException) {
         throw loopException
