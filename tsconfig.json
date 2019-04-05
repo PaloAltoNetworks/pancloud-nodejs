@@ -5,6 +5,7 @@
         "declaration": true,
         "target": "es2017",
         "module": "commonjs",
+        "moduleResolution": "node",
         "baseUrl": ".",
         "outDir": "dist"
     },

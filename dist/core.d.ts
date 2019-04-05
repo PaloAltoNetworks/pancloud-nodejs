@@ -1,7 +1,3 @@
-/**
- * Implements the abstract coreClass that implements common methods for higher-end classes like Event Service
- * and Logging Service
- */
 import { HttpMethod } from './fetch';
 import { Credentials } from './credentials';
 import { LogLevel } from './common';

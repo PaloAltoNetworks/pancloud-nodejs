@@ -15,6 +15,7 @@
  * Implements the abstract coreClass that implements common methods for higher-end classes like Event Service
  * and Logging Service
  */
+import { URL } from 'url'
 import { fetch, FetchOptions, HttpMethod } from './fetch'
 import { Credentials } from './credentials'
 import { ApplicationFrameworkError, PanCloudError } from './error'
@@ -95,7 +96,6 @@ export class CoreClass {
             apiTransactions: 0
         }
     }
-
 
     /**
      * Prepares the HTTP headers. Mainly used to keep the Autorization header (bearer access-token)

@@ -16,6 +16,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
  * Implements the abstract coreClass that implements common methods for higher-end classes like Event Service
  * and Logging Service
  */
+const url_1 = require("url");
 const fetch_1 = require("./fetch");
 const error_1 = require("./error");
 const common_1 = require("./common");
@@ -32,7 +33,7 @@ class CoreClass {
     constructor(cred, basePath, ops) {
         this.className = "coreClass";
         this.cred = cred;
-        this.baseUrl = new URL(basePath, cred.getEntryPoint()).toString();
+        this.baseUrl = new url_1.URL(basePath, cred.getEntryPoint()).toString();
         if (ops && ops.level != undefined && ops.level != common_1.LogLevel.INFO) {
             common_1.commonLogger.level = ops.level;
         }
