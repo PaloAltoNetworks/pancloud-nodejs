@@ -15,7 +15,11 @@ let query: LsQueryCfg = {
  */
 export async function main(): Promise<void> {
     let c = await autoCredentials()
-    let ls = await LoggingService.factory(c, { fetchTimeout: 45000 })
+    let ls = await LoggingService.factory(c, {
+        fetchTimeout: 45000, controlListener: x => {
+            console.log('Received control message\n', JSON.stringify(x, undefined, ' '))
+        }
+    })
     let job = await ls.query(query)
     let seq = job.sequenceNo
     if (job.queryStatus == "FINISHED") {
