@@ -1,5 +1,5 @@
 {
-  "name": "pancloud-nodejs",
+  "name": "pancloud",
   "version": "1.0.0",
   "description": "Palo Alto Networks Application Framework NodeJS SDK",
   "main": "dist/index.js",
