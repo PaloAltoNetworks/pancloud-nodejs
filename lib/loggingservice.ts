@@ -20,6 +20,7 @@ import { Emitter, EmitterOptions, EmitterInterface, EmitterStats, L2correlation 
 import { PanCloudError, isSdkError, SdkErr } from './error'
 import { setTimeout } from 'timers';
 import { Credentials } from './credentials';
+import { EventEmitter } from 'events';
 
 /**
  * Default delay (in milliseconds) between successive polls (auto-poll feature). It can be overrided in the
@@ -148,7 +149,8 @@ export interface JobResult {
                     _index: string,
                     _type: string,
                     _source: any
-                }[]
+                }[],
+                total?: number
             }
         }
     }
@@ -185,6 +187,7 @@ interface JobEntry {
     reject: (reason: any) => void,
     maxWaitTime?: number
     clientParameters?: any
+    totalHits?: number
 }
 
 /**
@@ -212,6 +215,12 @@ function isWriteResult(obj: any): obj is WriteResult {
         obj.uuids && typeof obj.uuids == 'object' && Array.isArray(obj.uuids)
 }
 
+export interface LsControlMessage {
+    queryId: string,
+    lastKnownStatus: jobStatus,
+    totalHits?: number
+}
+
 /**
  * Options for the LoggingService class factory
  */
@@ -220,6 +229,7 @@ export interface LsOptions extends EmitterOptions {
      * Amount of milliseconds to wait between consecutive autopoll() attempts. Defaults to **200ms**
      */
     autoPollSleep?: number
+    controlListener?: (message: LsControlMessage) => void
 }
 
 /**
@@ -233,6 +243,7 @@ export class LoggingService extends Emitter {
     private jobQueue: { [i: string]: JobEntry }
     private lastProcElement: number
     private pendingQueries: string[]
+    private controlEmitter?: EventEmitter
     protected stats: LsStats
 
     /**
@@ -246,6 +257,10 @@ export class LoggingService extends Emitter {
         this.jobQueue = {}
         this.lastProcElement = 0
         this.pendingQueries = []
+        if (ops && ops.controlListener) {
+            this.controlEmitter = new EventEmitter()
+            this.controlEmitter.addListener('on', ops.controlListener)
+        }
         this.stats = {
             records: 0,
             deletes: 0,
@@ -292,6 +307,14 @@ export class LoggingService extends Emitter {
         }
         if (rJson.result.esResult) {
             this.stats.records += rJson.result.esResult.hits.hits.length
+            if (this.controlEmitter) {
+                let ctrlMessage: LsControlMessage = {
+                    lastKnownStatus: rJson.queryStatus,
+                    queryId: rJson.queryId,
+                    totalHits: rJson.result.esResult.hits.total
+                }
+                this.controlEmitter.emit('on', ctrlMessage)
+            }
         }
         if (rJson.queryStatus != "JOB_FAILED") {
             if (providedCallback) {
@@ -371,6 +394,14 @@ export class LoggingService extends Emitter {
         if (isJobResult(rJson)) {
             if (rJson.result.esResult) {
                 this.stats.records += rJson.result.esResult.hits.hits.length
+                if (this.controlEmitter) {
+                    let ctrlMessage: LsControlMessage = {
+                        lastKnownStatus: rJson.queryStatus,
+                        queryId: rJson.queryId,
+                        totalHits: rJson.result.esResult.hits.total
+                    }
+                    this.controlEmitter.emit('on', ctrlMessage)
+                }
             }
             return rJson
         }
