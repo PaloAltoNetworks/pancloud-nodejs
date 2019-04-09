@@ -3,7 +3,7 @@ export { DevTokenCredentialsOptions, DevTokenCredentials } from './devtokencrede
 export { autoCredentials } from './autocredentials';
 export { LoggingService, LsOptions, LsQueryCfg, LsControlMessage } from './loggingservice';
 export { EventService, EsOptions, EsFilterBuilderCfg, EsFilterCfg } from './eventservice';
-export { DirectorySyncService, DssOptions, DssQueryFilter } from './directorysyncservice';
+export { DirectorySyncService, DssOptions, DssQueryFilter, DssObjClass } from './directorysyncservice';
 export { EmitterInterface, L2correlation } from './emitter';
 export { LogLevel, retrier, commonLogger, OAUTH2SCOPE, EntryPoint } from './common';
 export { isSdkError, PanCloudError } from './error';
