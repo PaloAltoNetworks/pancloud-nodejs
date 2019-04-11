@@ -39,7 +39,9 @@ pancloud.autoCredentials()
 ```
 $ export PAN_ACCESS_TOKEN=eyJhbGciOi......BwSldUIn0.eyJzd......iJ9.GFjG......iaW0N_PCA
 $ node index
-PANCLOUD: {"source":"AutoCredentials","message":"Environmental variable PAN_ENTRYPOINT not set. Assuming https://api.us.paloaltonetworks.com"}PANCLOUD: {"source":"AutoCredentials","message":"Using startic credentials. No refresh available."}PANCLOUD: {"source":"LoggingService","message":"Creating new LoggingService object for entryPoint https://api.us.paloaltonetworks.com"}
+PANCLOUD: {"source":"AutoCredentials","message":"Environmental variable PAN_ENTRYPOINT not set. Assuming https://api.us.paloaltonetworks.com"}
+PANCLOUD: {"source":"AutoCredentials","message":"Using startic credentials. No refresh available."}
+PANCLOUD: {"source":"LoggingService","message":"Creating new LoggingService object for entryPoint https://api.us.paloaltonetworks.com"}
 PANCLOUD: {"source":"LoggingService","message":"*queries* post request. Query: {\"query\":\"SELECT * FROM panw.dpi WHERE subtype='dhcp' LIMIT 1\",\"startTime\":0,\"endTime\":2000000000,\"maxWaitTime\":30000}"}
 PANCLOUD: {"source":"LoggingService","message":"updated authorization header"}
 {
