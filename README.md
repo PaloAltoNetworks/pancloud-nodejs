@@ -13,11 +13,11 @@ The secondary goal is to provide coverage, in the form of helpers, for common ta
 
 # Quick Starting
 1. Install `pancloud` in your project as a dependency
-`npm install pancloud`
+```$ npm install pancloud```
 2. Use the `autoCredentials()` function to instantiate a `Credentials` object based on your environmental variables
-.* Option 1: Set the variable `PAN_ACCESS_TOKEN` to retrieve a `Credentials` instance (valid to interface with a datalake as long as the access token is not expired / no auto-refresh available)
-.* Option 2: Set the variables `PAN_CLIENT_ID`, `PAN_CLIENT_SECRET` and `PAN_REFRESH_TOKEN` to instantiate a memory-based credentials provider and retrieve a `Credentials` object bound to the datalake for which the provided refresh token was issued (auto-refresh available)
-.* Option 3: Set the variable `PAN_DEVELOPER_TOKEN` to retieve a `Credentials` object that will leverage your API Explorer tenant to issue access tokens on your behalf
+-- _Option 1_: Set the variable `PAN_ACCESS_TOKEN` to retrieve a `Credentials` instance (valid to interface with a datalake as long as the access token is not expired / no auto-refresh available)
+-- _Option 2_: Set the variables `PAN_CLIENT_ID`, `PAN_CLIENT_SECRET` and `PAN_REFRESH_TOKEN` to instantiate a memory-based credentials provider and retrieve a `Credentials` object bound to the datalake for which the provided refresh token was issued (auto-refresh available)
+-- _Option 3_: Set the variable `PAN_DEVELOPER_TOKEN` to retieve a `Credentials` object that will leverage your API Explorer tenant to issue access tokens on your behalf
 3. Instantiate a `LoggingService` object using the `Credentials` object you obtained in the step 2
 4. Perform a query using the `query()` method of your `LoggingService` object.
 
