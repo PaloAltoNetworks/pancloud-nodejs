@@ -9,13 +9,9 @@ The primary goal is to provide full, low-level API coverage for the following Ap
 * Directory Sync Service
 * Event Service
 
-The secondary goal is to provide coverage, in the form of helpers, for common tasks/operations.
+The secondary goal is to provide coverage, in the form of helpers, for common tasks/operations. (Log/event pagination, OAuth 2.0 and token refreshing ...)
 
-* Log/event pagination
-* OAuth 2.0 and token refreshing
-* More, coming soon!
-
-## Quick Starting
+# Quick Starting
 1. Install `pancloud` in your project as a dependency
 `npm install pancloud`
 2. Use the `autoCredentials()` function to instantiate a `Credentials` object based on your environmental variables
@@ -25,7 +21,7 @@ The secondary goal is to provide coverage, in the form of helpers, for common ta
 3. Instantiate a `LoggingService` object using the `Credentials` object you obtained in the step 2
 4. Perform a query using the `query()` method of your `LoggingService` object.
 
-### Quick Starting Examples
+## Quick Starting Examples
 create a file named `index.js` in your project forder with the following content
 ```
 const pancloud = require('pancloud');
