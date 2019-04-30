@@ -15,6 +15,7 @@
  * Implements the abstract coreClass that implements common methods for higher-end classes like Event Service
  * and Logging Service
  */
+import { URL } from 'url'
 import { fetch, FetchOptions, HttpMethod } from './fetch'
 import { Credentials } from './credentials'
 import { ApplicationFrameworkError, PanCloudError } from './error'
@@ -62,6 +63,10 @@ export class CoreClass {
      */
     protected cred: Credentials
     /**
+     * Last known valid until value of the access token
+     */
+    protected validUntil: Number
+    /**
      * Master Application Framework API entry point
      */
     protected baseUrl: string
@@ -96,7 +101,6 @@ export class CoreClass {
         }
     }
 
-
     /**
      * Prepares the HTTP headers. Mainly used to keep the Autorization header (bearer access-token)
      */
@@ -110,14 +114,17 @@ export class CoreClass {
 
     /**
      * Triggers the credential object access-token refresh procedure and updates the HTTP headers
+     * DEPRECATED 190429 (rename it to `refresh` if needed)
      */
-    protected async refresh(): Promise<void> {
+    protected async _refresh(): Promise<void> {
         await this.cred.retrieveAccessToken()
         await this.setFetchHeaders()
     }
 
     private async checkAutoRefresh(): Promise<void> {
-        if (await this.cred.autoRefresh()) {
+        let currentValidUntil = await this.cred.autoRefresh()
+        if (this.validUntil != currentValidUntil) {
+            this.validUntil = currentValidUntil
             await this.setFetchHeaders()
         }
     }

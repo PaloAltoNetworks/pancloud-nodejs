@@ -19,34 +19,39 @@ import { CortexCredentialProvider, CredentialProviderOptions, CredentialsItem, i
 import { createCipheriv, createDecipheriv, createHash } from 'crypto'
 import * as fs from 'fs'
 
-interface ConfigFile {
-    credentialItems: { [dlid: string]: CredentialsItem }
+interface ConfigFile<T> {
+    credentialItems: { [dlid: string]: CredentialsItem },
+    metadata: { [datalakeId: string]: T }
 }
 
-function isConfigFile(obj: any): obj is ConfigFile {
+function isConfigFile<T>(obj: any): obj is ConfigFile<T> {
     return typeof obj == 'object' &&
+        obj.metadata &&
         obj.credentialItems && typeof obj.credentialItems == 'object' &&
         Object.entries(obj.credentialItems).every(v => typeof v[0] == 'string' && isCredentialItem(v[1]))
 }
 
-class FsCredProvider extends CortexCredentialProvider {
+class FsCredProvider<T, K extends keyof T> extends CortexCredentialProvider<T, K> {
     private key: Buffer
     private iv: Buffer
     private configFileName: string
+    private metadata: { [datalakeId: string]: T }
     className = 'FsCredProvider'
 
     constructor(ops: CredentialProviderOptions &
     { clientId: string, clientSecret: string } &
-    { key: Buffer, iv: Buffer, configFileName: string }) {
-        super(ops)
+    { key: Buffer, iv: Buffer, configFileName: string }, tenantKey?: K) {
+        super(ops, tenantKey)
         this.key = ops.key
         this.iv = ops.iv
         this.configFileName = ops.configFileName
+        this.metadata = {}
     }
 
     private async fullSync(): Promise<void> {
-        let configFile: ConfigFile = {
-            credentialItems: this.credentials
+        let configFile: ConfigFile<T> = {
+            credentialItems: this.credentials,
+            metadata: this.metadata
         }
         Object.entries(this.credentials).forEach(v => {
             let aes = createCipheriv('aes128', this.key, this.iv)
@@ -59,7 +64,10 @@ class FsCredProvider extends CortexCredentialProvider {
         await promifyFs(this, fs.writeFile, this.configFileName, JSON.stringify(configFile, undefined, ' '))
     }
 
-    protected createCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem): Promise<void> {
+    protected createCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem, metadata?: T | undefined): Promise<void> {
+        if (metadata) {
+            this.metadata[datalakeId] = metadata
+        }
         commonLogger.info(this, `Lazy implementation of CREATE credentials request for datalake ${datalakeId} with a full synch operation`)
         return this.fullSync()
     }
@@ -74,6 +82,16 @@ class FsCredProvider extends CortexCredentialProvider {
         return this.fullSync()
     }
 
+    selectDatalakeByTenant(tenantId: T[K]): Promise<string[]> {
+        let matchingDatalakes = Object.keys(this.metadata).filter(datalakeId => {
+            if (this.tenantKey === undefined) {
+                return false
+            }
+            return this.metadata[datalakeId][this.tenantKey] == tenantId
+        })
+        return Promise.resolve(matchingDatalakes)
+    }
+
     protected async loadCredentialsDb(): Promise<{ [dlid: string]: CredentialsItem }> {
         let jsonConfig: any
         try {
@@ -82,9 +100,10 @@ class FsCredProvider extends CortexCredentialProvider {
         } catch (e) {
             throw PanCloudError.fromError(this, e)
         }
-        if (!isConfigFile(jsonConfig)) {
+        if (!isConfigFile<T>(jsonConfig)) {
             throw new PanCloudError(this, 'PARSER', `Invalid configuration file format in ${this.configFileName}`)
         }
+        this.metadata = jsonConfig.metadata
         Object.entries(jsonConfig.credentialItems).forEach(v => {
             let aes = createDecipheriv('aes128', this.key, this.iv)
             let payload = Buffer.concat([aes.update(Buffer.from(v[1].refreshToken, 'base64')), aes.final()]).toString('utf8')
@@ -117,8 +136,8 @@ const CONFIG_FILE = 'PANCLOUD_CONFIG.json'
  * @param ops.envClientSecret environmental variable that keeps the OAUTH2 `client_secret` value in
  * case it is not provided explicitly. Defaults to `{ops.envPrefix}_CLIENT_SECRET`
  */
-export async function fsCredentialsFactory(ops: CredentialProviderOptions &
-{ envPrefix?: string, clientId?: string, clientSecret?: string, secret: string }): Promise<FsCredProvider> {
+export async function fsCredentialsFactory<T, K extends keyof T>(ops: CredentialProviderOptions &
+{ envPrefix?: string, clientId?: string, clientSecret?: string, secret: string }, tenantKey?: K): Promise<FsCredProvider<T, K>> {
     let { key, iv } = passIvGenerator(ops.secret)
     let ePrefix = (ops && ops.envPrefix) ? ops.envPrefix : ENV_PREFIX
     let envClientId = `${ePrefix}_CLIENT_ID`
@@ -140,8 +159,9 @@ export async function fsCredentialsFactory(ops: CredentialProviderOptions &
         await promifyFs<fs.Stats>(this, fs.stat, configFileName)
     } catch (e) {
         commonLogger.info({ className: 'fsCredProvider' }, `${configFileName} does not exist. Creating it`)
-        let blankConfig: ConfigFile = {
-            credentialItems: {}
+        let blankConfig: ConfigFile<T> = {
+            credentialItems: {},
+            metadata: {}
         }
         await promifyFs<void>(this, fs.writeFile, configFileName, JSON.stringify(blankConfig))
     }
@@ -157,7 +177,7 @@ export async function fsCredentialsFactory(ops: CredentialProviderOptions &
         iv: iv,
         configFileName: configFileName,
         ...ops
-    })
+    }, tenantKey)
 }
 
 function passIvGenerator(secret: string): { key: Buffer, iv: Buffer } {

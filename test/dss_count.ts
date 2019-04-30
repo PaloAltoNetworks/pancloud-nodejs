@@ -1,5 +1,4 @@
-import { autoCredentials, DirectorySyncService, LogLevel } from 'pancloud-nodejs'
-import { DssObjClass } from 'pancloud-nodejs/lib/directorysyncservice';
+import { autoCredentials, DirectorySyncService, LogLevel, DssObjClass } from 'pancloud-nodejs'
 
 export async function main(): Promise<void> {
     let c = await autoCredentials()

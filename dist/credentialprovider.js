@@ -37,14 +37,17 @@ function isIdpErrorResponse(obj) {
 }
 /**
  * Abstract class to provide credentials for multiple datalakes. If you want to extend this class
- * then you must implement its storage-related methods.
+ * then you must implement its storage-related methods. *T* describes the type of the optional
+ * metadata that can be attached to any datalake's credentials
  */
 class CortexCredentialProvider {
     /**
      * Class constructor
      * @param ops constructor options. Mandatory fields being OAUTH2 `clientId` and `clientSecret`
+     * @param tenantKey metadata feature, if used, mult solve at least the multi tenancy use case. That means that the metadata
+     * object of type `T` must include a property `K` that could be used for tenant membership identification
      */
-    constructor(ops) {
+    constructor(ops, tenantKey) {
         this.clientId = ops.clientId;
         this.clientSecret = ops.clientSecret;
         this.idpTokenUrl = (ops.idpTokenUrl) ? ops.idpTokenUrl : IDP_TOKEN_URL;
@@ -52,6 +55,7 @@ class CortexCredentialProvider {
         this.accTokenGuardTime = (ops.accTokenGuardTime) ? ops.accTokenGuardTime : ACCESS_GUARD;
         this.retrierAttempts = ops.retrierAttempts;
         this.retrierDelay = ops.retrierDelay;
+        this.tenantKey = tenantKey;
         if (this.accTokenGuardTime > 3300) {
             throw new error_1.PanCloudError(CortexCredentialProvider, 'CONFIG', `Property 'accTokenGuardTime' must be, at max 3300 seconds (${this.accTokenGuardTime})`);
         }
@@ -146,7 +150,10 @@ class CortexCredentialProvider {
      * @param prefetch You can provide the `access_token` and `valid_until` values if you also have
      * access to them to avoid the initial token refresh operation
      */
-    async issueWithRefreshToken(datalakeId, entryPoint, refreshToken, prefetch) {
+    async issueWithRefreshToken(datalakeId, entryPoint, refreshToken, prefetch, metadata) {
+        if (metadata !== undefined && this.tenantKey === undefined) {
+            throw new error_1.PanCloudError(CortexCredentialProvider, 'CONFIG', 'Metadata provided without proper initialization of the tenantKey property. Review your subclass constructor.');
+        }
         if (!this.credentials) {
             await this.restoreState();
         }
@@ -177,7 +184,7 @@ class CortexCredentialProvider {
             validUntil: validUntil
         });
         this.credentialsObject[datalakeId] = credentialsObject;
-        await this.createCredentialsItem(datalakeId, credItem);
+        await this.createCredentialsItem(datalakeId, credItem, metadata);
         common_1.commonLogger.info(CortexCredentialProvider, `Issued new Credentials Object for datalake ID ${datalakeId}`);
         return credentialsObject;
     }
@@ -188,15 +195,15 @@ class CortexCredentialProvider {
      * @param entryPoint Cortex Datalake regional entry point
      * @param refreshToken OAUTH2 `refresh_token` value
      */
-    async registerManualDatalake(datalakeId, entryPoint, refreshToken) {
-        return this.issueWithRefreshToken(datalakeId, entryPoint, refreshToken);
+    async registerManualDatalake(datalakeId, entryPoint, refreshToken, prefetch, metadata) {
+        return this.issueWithRefreshToken(datalakeId, entryPoint, refreshToken, prefetch, metadata);
     }
     /**
      * Retrieves the Credentials object for a given datalake
      * @param datalakeId ID of the datalake the Credentials object should be bound to
      */
     async getCredentialsObject(datalakeId) {
-        if (!this.credentials) {
+        if (this.credentials === undefined || this.credentials[datalakeId] === undefined) {
             await this.restoreState();
         }
         if (!this.credentialsObject[datalakeId]) {
@@ -210,8 +217,12 @@ class CortexCredentialProvider {
      * @param datalakeId ID of the datalake to be removed
      */
     async deleteDatalake(datalakeId) {
-        if (!this.credentials) {
+        if (this.credentials === undefined || this.credentials[datalakeId] === undefined) {
             await this.restoreState();
+        }
+        if (this.credentials[datalakeId] === undefined) {
+            common_1.commonLogger.info(CortexCredentialProvider, `Request to delete a non existant datalake ${datalakeId}. Ignoring it`);
+            return;
         }
         let param = {
             method: 'POST',
@@ -244,7 +255,7 @@ class CortexCredentialProvider {
      * @param datalakeId ID of the datalake to obtain `access_token` from
      */
     async retrieveCortexAccessToken(datalakeId) {
-        if (!this.credentials) {
+        if (this.credentials === undefined || this.credentials[datalakeId] === undefined) {
             await this.restoreState();
         }
         if (!(datalakeId in this.credentials)) {
@@ -283,6 +294,14 @@ class CortexCredentialProvider {
         }
         throw new error_1.PanCloudError(CortexCredentialProvider, 'PARSER', `Invalid response received by IDP provider`);
     }
+    /**
+     * Returns a basic `Credentials` subclass that just calls this provider's `retrieveCortexAccessToken`
+     * method when a new access_token is needed.
+     * @param datalakeId The datalake we want a credentials object for
+     * @param entryPoint The Cortex Datalake regional API entry point
+     * @param accTokenGuardTime Amount of seconds before expiration credentials object should use cached value
+     * @param prefetch Optinal prefetched access_token
+     */
     async defaultCredentialsObjectFactory(datalakeId, entryPoint, accTokenGuardTime, prefetch) {
         let credObject = new DefaultCredentials(datalakeId, entryPoint, accTokenGuardTime, this, prefetch);
         common_1.commonLogger.info(CortexCredentialProvider, `Instantiated new credential object from the factory for datalake id ${datalakeId}`);
@@ -305,6 +324,10 @@ class DefaultCredentialsProvider extends CortexCredentialProvider {
     }
     async deleteCredentialsItem(datalakeId) {
         common_1.commonLogger.info(this, 'Stateless credential provider. Discarding deleted item');
+    }
+    selectDatalakeByTenant(tenantId) {
+        common_1.commonLogger.info(this, 'Stateless credential provider. Do not support credentials metadata');
+        return Promise.resolve([]);
     }
     async loadCredentialsDb() {
         common_1.commonLogger.info(this, 'Stateless credential provider. Returning an empty item list to load() request');

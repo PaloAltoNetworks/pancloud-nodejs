@@ -103,9 +103,10 @@ export interface CredentialProviderOptions {
 
 /**
  * Abstract class to provide credentials for multiple datalakes. If you want to extend this class
- * then you must implement its storage-related methods.
+ * then you must implement its storage-related methods. *T* describes the type of the optional
+ * metadata that can be attached to any datalake's credentials
  */
-export abstract class CortexCredentialProvider {
+export abstract class CortexCredentialProvider<T, K extends keyof T> {
     private clientId: string
     private clientSecret: string
     private idpTokenUrl: string
@@ -117,15 +118,18 @@ export abstract class CortexCredentialProvider {
     private retrierAttempts?: number
     private retrierDelay?: number
     private accTokenGuardTime: number
+    protected tenantKey?: K
     static className = 'CortexCredentialProvider'
 
     /**
      * Class constructor
      * @param ops constructor options. Mandatory fields being OAUTH2 `clientId` and `clientSecret`
+     * @param tenantKey metadata feature, if used, mult solve at least the multi tenancy use case. That means that the metadata
+     * object of type `T` must include a property `K` that could be used for tenant membership identification
      */
     protected constructor(ops: CredentialProviderOptions & {
         clientId: string, clientSecret: string, idpAuthUrl?: string
-    }) {
+    }, tenantKey?: K) {
         this.clientId = ops.clientId
         this.clientSecret = ops.clientSecret
         this.idpTokenUrl = (ops.idpTokenUrl) ? ops.idpTokenUrl : IDP_TOKEN_URL
@@ -133,6 +137,7 @@ export abstract class CortexCredentialProvider {
         this.accTokenGuardTime = (ops.accTokenGuardTime) ? ops.accTokenGuardTime : ACCESS_GUARD
         this.retrierAttempts = ops.retrierAttempts
         this.retrierDelay = ops.retrierDelay
+        this.tenantKey = tenantKey
         if (this.accTokenGuardTime > 3300) {
             throw new PanCloudError(CortexCredentialProvider, 'CONFIG', `Property 'accTokenGuardTime' must be, at max 3300 seconds (${this.accTokenGuardTime})`)
         }
@@ -232,7 +237,10 @@ export abstract class CortexCredentialProvider {
      * access to them to avoid the initial token refresh operation
      */
     async issueWithRefreshToken(datalakeId: string, entryPoint: EntryPoint,
-        refreshToken: string, prefetch?: { accessToken: string, validUntil: number }): Promise<Credentials> {
+        refreshToken: string, prefetch?: { accessToken: string, validUntil: number }, metadata?: T): Promise<Credentials> {
+        if (metadata !== undefined && this.tenantKey === undefined) {
+            throw new PanCloudError(CortexCredentialProvider, 'CONFIG', 'Metadata provided without proper initialization of the tenantKey property. Review your subclass constructor.')
+        }
         if (!this.credentials) {
             await this.restoreState()
         }
@@ -264,7 +272,7 @@ export abstract class CortexCredentialProvider {
         })
 
         this.credentialsObject[datalakeId] = credentialsObject
-        await this.createCredentialsItem(datalakeId, credItem)
+        await this.createCredentialsItem(datalakeId, credItem, metadata)
         commonLogger.info(CortexCredentialProvider, `Issued new Credentials Object for datalake ID ${datalakeId}`)
         return credentialsObject
     }
@@ -276,8 +284,10 @@ export abstract class CortexCredentialProvider {
      * @param entryPoint Cortex Datalake regional entry point
      * @param refreshToken OAUTH2 `refresh_token` value
      */
-    async registerManualDatalake(datalakeId: string, entryPoint: EntryPoint, refreshToken: string): Promise<Credentials> {
-        return this.issueWithRefreshToken(datalakeId, entryPoint, refreshToken)
+    async registerManualDatalake(
+        datalakeId: string, entryPoint: EntryPoint, refreshToken: string,
+        prefetch?: { accessToken: string, validUntil: number }, metadata?: T): Promise<Credentials> {
+        return this.issueWithRefreshToken(datalakeId, entryPoint, refreshToken, prefetch, metadata)
     }
 
     /**
@@ -285,7 +295,7 @@ export abstract class CortexCredentialProvider {
      * @param datalakeId ID of the datalake the Credentials object should be bound to
      */
     async getCredentialsObject(datalakeId: string): Promise<Credentials> {
-        if (!this.credentials) {
+        if (this.credentials === undefined || this.credentials[datalakeId] === undefined) {
             await this.restoreState()
         }
         if (!this.credentialsObject[datalakeId]) {
@@ -301,8 +311,12 @@ export abstract class CortexCredentialProvider {
      * @param datalakeId ID of the datalake to be removed
      */
     async deleteDatalake(datalakeId: string): Promise<void> {
-        if (!this.credentials) {
+        if (this.credentials === undefined || this.credentials[datalakeId] === undefined) {
             await this.restoreState()
+        }
+        if (this.credentials[datalakeId] === undefined) {
+            commonLogger.info(CortexCredentialProvider, `Request to delete a non existant datalake ${datalakeId}. Ignoring it`)
+            return
         }
         let param: FetchOptions = {
             method: 'POST',
@@ -335,7 +349,7 @@ export abstract class CortexCredentialProvider {
      * @param datalakeId ID of the datalake to obtain `access_token` from
      */
     async retrieveCortexAccessToken(datalakeId: string): Promise<RefreshResult> {
-        if (!this.credentials) {
+        if (this.credentials === undefined || this.credentials[datalakeId] === undefined) {
             await this.restoreState()
         }
         if (!(datalakeId in this.credentials)) {
@@ -378,6 +392,14 @@ export abstract class CortexCredentialProvider {
         throw new PanCloudError(CortexCredentialProvider, 'PARSER', `Invalid response received by IDP provider`)
     }
 
+    /**
+     * Returns a basic `Credentials` subclass that just calls this provider's `retrieveCortexAccessToken`
+     * method when a new access_token is needed.
+     * @param datalakeId The datalake we want a credentials object for
+     * @param entryPoint The Cortex Datalake regional API entry point
+     * @param accTokenGuardTime Amount of seconds before expiration credentials object should use cached value
+     * @param prefetch Optinal prefetched access_token
+     */
     protected async defaultCredentialsObjectFactory(datalakeId: string, entryPoint: EntryPoint, accTokenGuardTime: number,
         prefetch?: { accessToken: string, validUntil: number }): Promise<Credentials> {
         let credObject = new DefaultCredentials(datalakeId, entryPoint, accTokenGuardTime, this, prefetch)
@@ -385,15 +407,56 @@ export abstract class CortexCredentialProvider {
         return credObject
     }
 
-    protected async abstract createCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem): Promise<void>
-    protected async abstract updateCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem): Promise<void>
-    protected async abstract deleteCredentialsItem(datalakeId: string): Promise<void>
-    protected async abstract loadCredentialsDb(): Promise<{ [dlid: string]: CredentialsItem }>
-    protected async abstract credentialsObjectFactory(datalakeId: string, entryPoint: EntryPoint, accTokenGuardTime: number,
+    /**
+     * Implementation dependant. It is called by the abstract class each time a new set of credenentials have been
+     * created (either by manual refresh or by OAUTH2 code grant flow handled by a `CortexHubHelper` companion).
+     * The implementator is expected to store them somewhere
+     * @param datalakeId datalake identificator
+     * @param credentialsItem credential attributes
+     * @param metadata optional metadata (used by multitenant applications to attach tenant ID)
+     */
+    protected abstract createCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem, metadata?: T): Promise<void>
+
+    /**
+     * Implementation dependant. It is called by the abstract class when a refresh token operation returns not
+     * only a new access_token but a new refresh_token as well. The implementator is expected to update the record
+     * @param datalakeId datalake identificator
+     * @param credentialsItem credential attributes
+     */
+    protected abstract updateCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem): Promise<void>
+
+    /**
+     * Implementation dependant. It is called by the abstract class as a response to a successful revocation of
+     * the refresh_token. The implementator is expected to delete the record from the store
+     * @param datalakeId datalake identificator
+     */
+    protected abstract deleteCredentialsItem(datalakeId: string): Promise<void>
+
+    /**
+     * Convenience method to allow a companion `CortexHubHelper` object retrieve metadata previously stored.
+     * Most implementations will return only these records matching the provided metadata (use case: to get
+     * all activated datalake ID's for a specific tenant)
+     */
+    abstract selectDatalakeByTenant(tenantId: T[K]): Promise<string[]>
+
+    /**
+     * Implementation dependant. Expected to load all records from the store
+     */
+    protected abstract loadCredentialsDb(): Promise<{ [dlid: string]: CredentialsItem }>
+
+    /**
+     * Implementation dependant. Its purpose is to initialize and return a suitable credentials object from this
+     * credential provider for the specific datalake and attached attributes
+     * @param datalakeId The datalake we want a credentials object for
+     * @param entryPoint The Cortex Datalake regional API entry point
+     * @param accTokenGuardTime Amount of seconds before expiration credentials object should use cached value
+     * @param prefetch Optinal prefetched access_token
+     */
+    protected abstract credentialsObjectFactory(datalakeId: string, entryPoint: EntryPoint, accTokenGuardTime: number,
         prefetch?: { accessToken: string, validUntil: number }): Promise<Credentials>
 }
 
-class DefaultCredentialsProvider extends CortexCredentialProvider {
+class DefaultCredentialsProvider extends CortexCredentialProvider<never, never> {
     private sequence: number
     className = 'DefaultCredentialsProvider'
 
@@ -414,6 +477,11 @@ class DefaultCredentialsProvider extends CortexCredentialProvider {
         commonLogger.info(this, 'Stateless credential provider. Discarding deleted item')
     }
 
+    selectDatalakeByTenant(tenantId: never): Promise<string[]> {
+        commonLogger.info(this, 'Stateless credential provider. Do not support credentials metadata')
+        return Promise.resolve([])
+    }
+
     protected async loadCredentialsDb(): Promise<{ [dlid: string]: CredentialsItem }> {
         commonLogger.info(this, 'Stateless credential provider. Returning an empty item list to load() request')
         return {}
@@ -425,11 +493,11 @@ class DefaultCredentialsProvider extends CortexCredentialProvider {
     }
 }
 
-class DefaultCredentials extends Credentials {
-    accessTokenSupplier: CortexCredentialProvider
+class DefaultCredentials<T, K extends keyof T> extends Credentials {
+    accessTokenSupplier: CortexCredentialProvider<T, K>
     datalakeId: string
 
-    constructor(datalakeId: string, entryPoint: EntryPoint, accTokenGuardTime: number, supplier: CortexCredentialProvider,
+    constructor(datalakeId: string, entryPoint: EntryPoint, accTokenGuardTime: number, supplier: CortexCredentialProvider<T, K>,
         prefetch?: { accessToken: string, validUntil: number }) {
         super(entryPoint, accTokenGuardTime)
         this.datalakeId = datalakeId
