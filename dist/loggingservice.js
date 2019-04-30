@@ -120,14 +120,6 @@ class LoggingService extends emitter_1.Emitter {
         }
         if (rJson.result.esResult) {
             this.stats.records += rJson.result.esResult.hits.hits.length;
-            if (this.controlEmitter) {
-                let ctrlMessage = {
-                    lastKnownStatus: rJson.queryStatus,
-                    queryId: rJson.queryId,
-                    totalHits: rJson.result.esResult.hits.total
-                };
-                this.controlEmitter.emit('on', ctrlMessage);
-            }
         }
         if (rJson.queryStatus != "JOB_FAILED") {
             if (providedCallback) {
@@ -159,6 +151,16 @@ class LoggingService extends emitter_1.Emitter {
                 });
                 this.pendingQueries = Object.keys(this.jobQueue);
                 this.eventEmitter(rJson);
+                if (rJson.result.esResult) {
+                    if (this.controlEmitter) {
+                        let ctrlMessage = {
+                            lastKnownStatus: rJson.queryStatus,
+                            queryId: rJson.queryId,
+                            totalHits: rJson.result.esResult.hits.total
+                        };
+                        this.controlEmitter.emit('on', ctrlMessage);
+                    }
+                }
                 if (rJson.queryStatus == "JOB_FINISHED") {
                     let jobResolver = this.jobQueue[rJson.queryId].resolve;
                     this.emitterCleanup(rJson);
@@ -206,14 +208,6 @@ class LoggingService extends emitter_1.Emitter {
         if (isJobResult(rJson)) {
             if (rJson.result.esResult) {
                 this.stats.records += rJson.result.esResult.hits.hits.length;
-                if (this.controlEmitter) {
-                    let ctrlMessage = {
-                        lastKnownStatus: rJson.queryStatus,
-                        queryId: rJson.queryId,
-                        totalHits: rJson.result.esResult.hits.total
-                    };
-                    this.controlEmitter.emit('on', ctrlMessage);
-                }
             }
             return rJson;
         }
@@ -229,7 +223,7 @@ class LoggingService extends emitter_1.Emitter {
         let jobR = {
             queryId: "",
             queryStatus: "RUNNING",
-            result: { esResult: null },
+            result: {},
             sequenceNo: 0,
             clientParameters: {}
         };
@@ -241,6 +235,16 @@ class LoggingService extends emitter_1.Emitter {
             }
             else {
                 ls.eventEmitter(jobR);
+                if (jobR.result.esResult) {
+                    if (ls.controlEmitter) {
+                        let ctrlMessage = {
+                            lastKnownStatus: jobR.queryStatus,
+                            queryId: jobR.queryId,
+                            totalHits: jobR.result.esResult.hits.total
+                        };
+                        ls.controlEmitter.emit('on', ctrlMessage);
+                    }
+                }
                 if (jobR.queryStatus == "FINISHED") {
                     currentJob.sequenceNo++;
                 }

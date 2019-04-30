@@ -41,6 +41,10 @@ export declare class CoreClass {
      */
     protected cred: Credentials;
     /**
+     * Last known valid until value of the access token
+     */
+    protected validUntil: Number;
+    /**
      * Master Application Framework API entry point
      */
     protected baseUrl: string;
@@ -68,8 +72,9 @@ export declare class CoreClass {
     private setFetchHeaders;
     /**
      * Triggers the credential object access-token refresh procedure and updates the HTTP headers
+     * DEPRECATED 190429 (rename it to `refresh` if needed)
      */
-    protected refresh(): Promise<void>;
+    protected _refresh(): Promise<void>;
     private checkAutoRefresh;
     private fetchXWrap;
     /**

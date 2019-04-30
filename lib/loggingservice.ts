@@ -143,7 +143,7 @@ export interface JobResult {
     queryStatus: jobStatus,
     clientParameters: any
     result: {
-        esResult: null | {
+        esResult?: {
             hits: {
                 hits: {
                     _index: string,
@@ -151,6 +151,11 @@ export interface JobResult {
                     _source: any
                 }[],
                 total?: number
+            },
+            response?: {
+                result: {
+                    aggregations?: any
+                }
             }
         }
     }
@@ -307,14 +312,6 @@ export class LoggingService extends Emitter {
         }
         if (rJson.result.esResult) {
             this.stats.records += rJson.result.esResult.hits.hits.length
-            if (this.controlEmitter) {
-                let ctrlMessage: LsControlMessage = {
-                    lastKnownStatus: rJson.queryStatus,
-                    queryId: rJson.queryId,
-                    totalHits: rJson.result.esResult.hits.total
-                }
-                this.controlEmitter.emit('on', ctrlMessage)
-            }
         }
         if (rJson.queryStatus != "JOB_FAILED") {
             if (providedCallback) {
@@ -346,6 +343,16 @@ export class LoggingService extends Emitter {
                 })
                 this.pendingQueries = Object.keys(this.jobQueue)
                 this.eventEmitter(rJson)
+                if (rJson.result.esResult) {
+                    if (this.controlEmitter) {
+                        let ctrlMessage: LsControlMessage = {
+                            lastKnownStatus: rJson.queryStatus,
+                            queryId: rJson.queryId,
+                            totalHits: rJson.result.esResult.hits.total
+                        }
+                        this.controlEmitter.emit('on', ctrlMessage)
+                    }
+                }
                 if (rJson.queryStatus == "JOB_FINISHED") {
                     let jobResolver = this.jobQueue[rJson.queryId].resolve
                     this.emitterCleanup(rJson)
@@ -394,14 +401,6 @@ export class LoggingService extends Emitter {
         if (isJobResult(rJson)) {
             if (rJson.result.esResult) {
                 this.stats.records += rJson.result.esResult.hits.hits.length
-                if (this.controlEmitter) {
-                    let ctrlMessage: LsControlMessage = {
-                        lastKnownStatus: rJson.queryStatus,
-                        queryId: rJson.queryId,
-                        totalHits: rJson.result.esResult.hits.total
-                    }
-                    this.controlEmitter.emit('on', ctrlMessage)
-                }
             }
             return rJson
         }
@@ -418,7 +417,7 @@ export class LoggingService extends Emitter {
         let jobR: JobResult = {
             queryId: "",
             queryStatus: "RUNNING",
-            result: { esResult: null },
+            result: {},
             sequenceNo: 0,
             clientParameters: {}
         }
@@ -429,6 +428,16 @@ export class LoggingService extends Emitter {
                 await ls.cancelPoll(currentQid, new PanCloudError(ls, "UNKNOWN", "JOB_FAILED"))
             } else {
                 ls.eventEmitter(jobR)
+                if (jobR.result.esResult) {
+                    if (ls.controlEmitter) {
+                        let ctrlMessage: LsControlMessage = {
+                            lastKnownStatus: jobR.queryStatus,
+                            queryId: jobR.queryId,
+                            totalHits: jobR.result.esResult.hits.total
+                        }
+                        ls.controlEmitter.emit('on', ctrlMessage)
+                    }
+                }
                 if (jobR.queryStatus == "FINISHED") {
                     currentJob.sequenceNo++
                 }

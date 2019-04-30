@@ -115,7 +115,7 @@ export interface JobResult {
     queryStatus: jobStatus;
     clientParameters: any;
     result: {
-        esResult: null | {
+        esResult?: {
             hits: {
                 hits: {
                     _index: string;
@@ -123,6 +123,11 @@ export interface JobResult {
                     _source: any;
                 }[];
                 total?: number;
+            };
+            response?: {
+                result: {
+                    aggregations?: any;
+                };
             };
         };
     };

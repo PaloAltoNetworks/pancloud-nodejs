@@ -5,7 +5,7 @@ export { LoggingService, LsOptions, LsQueryCfg, LsControlMessage } from './loggi
 export { EventService, EsOptions, EsFilterBuilderCfg, EsFilterCfg } from './eventservice';
 export { DirectorySyncService, DssOptions, DssQueryFilter, DssObjClass } from './directorysyncservice';
 export { EmitterInterface, L2correlation } from './emitter';
-export { LogLevel, retrier, commonLogger, OAUTH2SCOPE, EntryPoint } from './common';
+export { LogLevel, retrier, commonLogger, OAUTH2SCOPE, EntryPoint, setLogLevel, setLogger } from './common';
 export { isSdkError, PanCloudError } from './error';
 export { Util } from './util';
 export { CortexCredentialProvider, CredentialProviderOptions, CredentialsItem, RefreshResult, defaultCredentialsProviderFactory, isCredentialItem } from './credentialprovider';
