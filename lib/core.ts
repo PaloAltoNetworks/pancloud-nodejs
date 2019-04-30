@@ -63,6 +63,10 @@ export class CoreClass {
      */
     protected cred: Credentials
     /**
+     * Last known valid until value of the access token
+     */
+    protected validUntil: Number
+    /**
      * Master Application Framework API entry point
      */
     protected baseUrl: string
@@ -110,14 +114,17 @@ export class CoreClass {
 
     /**
      * Triggers the credential object access-token refresh procedure and updates the HTTP headers
+     * DEPRECATED 190429 (rename it to `refresh` if needed)
      */
-    protected async refresh(): Promise<void> {
+    protected async _refresh(): Promise<void> {
         await this.cred.retrieveAccessToken()
         await this.setFetchHeaders()
     }
 
     private async checkAutoRefresh(): Promise<void> {
-        if (await this.cred.autoRefresh()) {
+        let currentValidUntil = await this.cred.autoRefresh()
+        if (this.validUntil != currentValidUntil) {
+            this.validUntil = currentValidUntil
             await this.setFetchHeaders()
         }
     }

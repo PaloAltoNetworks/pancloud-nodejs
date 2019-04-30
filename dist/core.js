@@ -56,13 +56,16 @@ class CoreClass {
     }
     /**
      * Triggers the credential object access-token refresh procedure and updates the HTTP headers
+     * DEPRECATED 190429 (rename it to `refresh` if needed)
      */
-    async refresh() {
+    async _refresh() {
         await this.cred.retrieveAccessToken();
         await this.setFetchHeaders();
     }
     async checkAutoRefresh() {
-        if (await this.cred.autoRefresh()) {
+        let currentValidUntil = await this.cred.autoRefresh();
+        if (this.validUntil != currentValidUntil) {
+            this.validUntil = currentValidUntil;
             await this.setFetchHeaders();
         }
     }

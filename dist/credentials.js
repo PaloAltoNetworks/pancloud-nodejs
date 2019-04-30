@@ -64,13 +64,13 @@ class Credentials {
             try {
                 common_1.commonLogger.info(this, 'Cached access token about to expire. Requesting a new one.');
                 await this.retrieveAccessToken();
-                return true;
+                return this.validUntil;
             }
             catch (_a) {
                 common_1.commonLogger.info(this, 'Failed to get a new access token');
             }
         }
-        return false;
+        return this.validUntil;
     }
 }
 exports.Credentials = Credentials;

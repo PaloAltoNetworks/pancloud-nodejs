@@ -24,7 +24,7 @@ export declare abstract class Credentials implements PancloudClass {
      * Checks the access token expiration time and automaticaly refreshes it if going to expire
      * inside the next 5 minutes
      */
-    autoRefresh(): Promise<boolean>;
+    autoRefresh(): Promise<number>;
     /**
      * Triggers an access token refresh request
      */
