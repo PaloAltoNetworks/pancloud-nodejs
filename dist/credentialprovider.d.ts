@@ -64,9 +64,10 @@ export interface CredentialProviderOptions {
 }
 /**
  * Abstract class to provide credentials for multiple datalakes. If you want to extend this class
- * then you must implement its storage-related methods.
+ * then you must implement its storage-related methods. *T* describes the type of the optional
+ * metadata that can be attached to any datalake's credentials
  */
-export declare abstract class CortexCredentialProvider {
+export declare abstract class CortexCredentialProvider<T, K extends keyof T> {
     private clientId;
     private clientSecret;
     private idpTokenUrl;
@@ -78,16 +79,19 @@ export declare abstract class CortexCredentialProvider {
     private retrierAttempts?;
     private retrierDelay?;
     private accTokenGuardTime;
+    protected tenantKey?: K;
     static className: string;
     /**
      * Class constructor
      * @param ops constructor options. Mandatory fields being OAUTH2 `clientId` and `clientSecret`
+     * @param tenantKey metadata feature, if used, mult solve at least the multi tenancy use case. That means that the metadata
+     * object of type `T` must include a property `K` that could be used for tenant membership identification
      */
     protected constructor(ops: CredentialProviderOptions & {
         clientId: string;
         clientSecret: string;
         idpAuthUrl?: string;
-    });
+    }, tenantKey?: K);
     /**
      * @returns this CredentialProvider class OAUTH2 `[clientId, clientSecret]`
      */
@@ -117,7 +121,7 @@ export declare abstract class CortexCredentialProvider {
     issueWithRefreshToken(datalakeId: string, entryPoint: EntryPoint, refreshToken: string, prefetch?: {
         accessToken: string;
         validUntil: number;
-    }): Promise<Credentials>;
+    }, metadata?: T): Promise<Credentials>;
     /**
      * Registers a datalake using its `refresh_token` value and returns a Credentials object bound
      * to it
@@ -125,7 +129,10 @@ export declare abstract class CortexCredentialProvider {
      * @param entryPoint Cortex Datalake regional entry point
      * @param refreshToken OAUTH2 `refresh_token` value
      */
-    registerManualDatalake(datalakeId: string, entryPoint: EntryPoint, refreshToken: string): Promise<Credentials>;
+    registerManualDatalake(datalakeId: string, entryPoint: EntryPoint, refreshToken: string, prefetch?: {
+        accessToken: string;
+        validUntil: number;
+    }, metadata?: T): Promise<Credentials>;
     /**
      * Retrieves the Credentials object for a given datalake
      * @param datalakeId ID of the datalake the Credentials object should be bound to
@@ -144,16 +151,60 @@ export declare abstract class CortexCredentialProvider {
      */
     retrieveCortexAccessToken(datalakeId: string): Promise<RefreshResult>;
     private parseIdpResponse;
+    /**
+     * Returns a basic `Credentials` subclass that just calls this provider's `retrieveCortexAccessToken`
+     * method when a new access_token is needed.
+     * @param datalakeId The datalake we want a credentials object for
+     * @param entryPoint The Cortex Datalake regional API entry point
+     * @param accTokenGuardTime Amount of seconds before expiration credentials object should use cached value
+     * @param prefetch Optinal prefetched access_token
+     */
     protected defaultCredentialsObjectFactory(datalakeId: string, entryPoint: EntryPoint, accTokenGuardTime: number, prefetch?: {
         accessToken: string;
         validUntil: number;
     }): Promise<Credentials>;
-    protected abstract createCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem): Promise<void>;
+    /**
+     * Implementation dependant. It is called by the abstract class each time a new set of credenentials have been
+     * created (either by manual refresh or by OAUTH2 code grant flow handled by a `CortexHubHelper` companion).
+     * The implementator is expected to store them somewhere
+     * @param datalakeId datalake identificator
+     * @param credentialsItem credential attributes
+     * @param metadata optional metadata (used by multitenant applications to attach tenant ID)
+     */
+    protected abstract createCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem, metadata?: T): Promise<void>;
+    /**
+     * Implementation dependant. It is called by the abstract class when a refresh token operation returns not
+     * only a new access_token but a new refresh_token as well. The implementator is expected to update the record
+     * @param datalakeId datalake identificator
+     * @param credentialsItem credential attributes
+     */
     protected abstract updateCredentialsItem(datalakeId: string, credentialsItem: CredentialsItem): Promise<void>;
+    /**
+     * Implementation dependant. It is called by the abstract class as a response to a successful revocation of
+     * the refresh_token. The implementator is expected to delete the record from the store
+     * @param datalakeId datalake identificator
+     */
     protected abstract deleteCredentialsItem(datalakeId: string): Promise<void>;
+    /**
+     * Convenience method to allow a companion `CortexHubHelper` object retrieve metadata previously stored.
+     * Most implementations will return only these records matching the provided metadata (use case: to get
+     * all activated datalake ID's for a specific tenant)
+     */
+    abstract selectDatalakeByTenant(tenantId: T[K]): Promise<string[]>;
+    /**
+     * Implementation dependant. Expected to load all records from the store
+     */
     protected abstract loadCredentialsDb(): Promise<{
         [dlid: string]: CredentialsItem;
     }>;
+    /**
+     * Implementation dependant. Its purpose is to initialize and return a suitable credentials object from this
+     * credential provider for the specific datalake and attached attributes
+     * @param datalakeId The datalake we want a credentials object for
+     * @param entryPoint The Cortex Datalake regional API entry point
+     * @param accTokenGuardTime Amount of seconds before expiration credentials object should use cached value
+     * @param prefetch Optinal prefetched access_token
+     */
     protected abstract credentialsObjectFactory(datalakeId: string, entryPoint: EntryPoint, accTokenGuardTime: number, prefetch?: {
         accessToken: string;
         validUntil: number;

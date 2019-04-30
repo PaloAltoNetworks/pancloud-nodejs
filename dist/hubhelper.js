@@ -38,6 +38,9 @@ exports.isCortexClientParams = isCortexClientParams;
  * @param U interface used by the `req.user` object provided by a *PassportJS-like* enabled
  * application willing to use this class `authCallbackHandler` method.
  * @param K the string-like property in `U` containing the requester TenantID
+ * @param M interface describing the metadata that will be attached to datalakes in CortexCredentialProvider
+ * for multi-tenancy applications. CortexHubHelper will add/replace a property named `tenantId` in M so take this into
+ * consideration when defining the interface `M`
  */
 class CortexHubHelper {
     /**
@@ -85,12 +88,12 @@ class CortexHubHelper {
      * @param scope OAUTH2 Data access Scope(s)
      * @returns a URI ready to be consumed (typically to be used for a client 302 redirect)
      */
-    async idpAuthRequest(tenantId, datalakeId, scope) {
+    async idpAuthRequest(tenantId, datalakeId, scope, metadata) {
         let clientParams = await this.getDatalake(tenantId, datalakeId);
         if (!this.idpCallbackUrl) {
             throw new error_1.PanCloudError(credentialprovider_1.CortexCredentialProvider, 'CONFIG', `idpCallbackUrl was not provided in the ops passed to the constructor. Can't request auth without it.`);
         }
-        let stateId = await this.requestAuthState({ tenantId: tenantId, datalakeId: datalakeId });
+        let stateId = await this.requestAuthState({ tenantId: tenantId, datalakeId: datalakeId, metadata: metadata });
         let qsParams = {
             response_type: 'code',
             client_id: this.clientId,
@@ -126,8 +129,9 @@ class CortexHubHelper {
         }
         let tenantId;
         let datalakeId;
+        let metadata;
         try {
-            ({ tenantId, datalakeId } = await this.restoreAuthState(state));
+            ({ tenantId, datalakeId, metadata } = await this.restoreAuthState(state));
         }
         catch (e) {
             common_1.commonLogger.alert(CortexHubHelper, `Unable to restore state ${state} in callback helper`);
@@ -161,7 +165,7 @@ class CortexHubHelper {
                 return;
             }
             let reqTenantId = req.user[tKey];
-            if (!(typeof reqTenantId == 'string' && reqTenantId == tenantId)) {
+            if (!(typeof reqTenantId == 'string' && reqTenantId != tenantId)) {
                 common_1.commonLogger.alert(CortexHubHelper, `Tenant validation failed: state tenantId ${tenantId} not equal to request tenantId ${JSON.stringify(reqTenantId)}`);
                 callbackStatus = { error: 'tenantId in request does not match the one in the stored state' };
                 req.callbackIdp = callbackStatus;
@@ -201,8 +205,8 @@ class CortexHubHelper {
             return;
         }
         try {
-            await this.credProvider.issueWithRefreshToken(`${tenantId}@${datalakeId}`, clientParams.location.entryPoint, idpResponse.refresh_token, { accessToken: idpResponse.access_token, validUntil: idpResponse.validUntil });
-            callbackStatus = { datalakeId: datalakeId };
+            await this.credProvider.issueWithRefreshToken(datalakeId, clientParams.location.entryPoint, idpResponse.refresh_token, { accessToken: idpResponse.access_token, validUntil: idpResponse.validUntil }, Object.assign({ tenantId: tenantId }, metadata));
+            callbackStatus = { message: 'OK', datalakeId: datalakeId };
             req.callbackIdp = callbackStatus;
             next();
         }
@@ -295,6 +299,25 @@ class CortexHubHelper {
         common_1.commonLogger.info(CortexHubHelper, `Successfully deleted datalake ${datalakeId} from credentials provider`);
         await this._deleteDatalake(tenantId, datalakeId);
         common_1.commonLogger.info(CortexHubHelper, `Successfully deleted datalake ${tenantId}/${datalakeId} from hub helper`);
+    }
+    /**
+     * Abstraction that allows the `CortexHubHelper` subclass implementation reach out its bound `CortexCredentialProvider`
+     * The typical use case if for the `CortexHubHelper` to ask the `CortexCredentialProvider` the list of datalake ID's
+     * it holds (activated) for a given tenant ID
+     * @param tenantId
+     */
+    async datalakeActiveList(tenantId) {
+        let activeList = await this.credProvider.selectDatalakeByTenant(tenantId);
+        common_1.commonLogger.info(CortexHubHelper, `Retrieved ${activeList} items from CredentialProvide for tenantid ${tenantId}`);
+        return activeList;
+    }
+    async getCredentialsObject(tenantId, datalakeId) {
+        let activeList = await this.credProvider.selectDatalakeByTenant(tenantId);
+        if (!activeList.includes(datalakeId)) {
+            common_1.commonLogger.alert(CortexHubHelper, `Attempt request to access the datalake ${datalakeId} not present in ${tenantId} credentials store`);
+            throw new error_1.PanCloudError(CortexHubHelper, 'CONFIG', `datalake ${datalakeId} not found`);
+        }
+        return this.credProvider.getCredentialsObject(datalakeId);
     }
 }
 CortexHubHelper.className = 'CortexHubHelper';

@@ -13,6 +13,7 @@
 
 import { commonLogger, EntryPoint, region2EntryPoint, OAUTH2SCOPE } from './common'
 import { CortexCredentialProvider, AugmentedIdpResponse } from './credentialprovider'
+import { Credentials } from './credentials'
 import { FetchOptions } from './fetch'
 import { PanCloudError } from './error'
 import { stringify as qsStringify, parse as qsParse } from 'querystring'
@@ -29,6 +30,10 @@ export interface HubIdpCallback {
      * Would describe the error during the callback processing (if any)
      */
     error?: string
+    /**
+     * Optional message in the response
+     */
+    message?: string
     /**
      * Datalake ID if successfully processed and stored
      */
@@ -99,7 +104,7 @@ export function isCortexClientParams<T extends { [key: string]: string }>(obj: a
  * methods dealing with objects conforming to this interface. It describes an *authorization state*
  * (a pending authorization sent to IDP for user consent)
  */
-export interface HubIdpStateData {
+export interface HubIdpStateData<M> {
     /**
      * Requester Tenant ID
      */
@@ -107,7 +112,8 @@ export interface HubIdpStateData {
     /**
      * Requested datalakeID 
      */
-    datalakeId: string
+    datalakeId: string,
+    metadata: M
 }
 
 /**
@@ -132,13 +138,16 @@ export interface CortexHelperOptions {
  * @param U interface used by the `req.user` object provided by a *PassportJS-like* enabled
  * application willing to use this class `authCallbackHandler` method.
  * @param K the string-like property in `U` containing the requester TenantID
+ * @param M interface describing the metadata that will be attached to datalakes in CortexCredentialProvider
+ * for multi-tenancy applications. CortexHubHelper will add/replace a property named `tenantId` in M so take this into
+ * consideration when defining the interface `M`
  */
-export abstract class CortexHubHelper<T extends { [key: string]: string }, U, K extends keyof U> {
+export abstract class CortexHubHelper<T extends { [key: string]: string }, U, K extends keyof U, M> {
     private clientId: string
     private clientSecret: string
     private idpAuthUrl: string
     private callbackTenantValidation: boolean
-    private credProvider: CortexCredentialProvider
+    private credProvider: CortexCredentialProvider<{ tenantId: string } & M, 'tenantId'>
     private idpCallbackUrl: string
     private tenantKey?: K
     static className = 'CortexHubHelper'
@@ -151,7 +160,7 @@ export abstract class CortexHubHelper<T extends { [key: string]: string }, U, K 
      * @param tenantKey the name of the string-like property in `U` that contains the requesting Tenant ID
      * @param ops class configuration options
      */
-    constructor(idpCallbackUrl: string, credProv: CortexCredentialProvider, tenantKey?: K, ops?: CortexHelperOptions) {
+    constructor(idpCallbackUrl: string, credProv: CortexCredentialProvider<{ tenantId: string } & M, 'tenantId'>, tenantKey?: K, ops?: CortexHelperOptions) {
         this.idpAuthUrl = (ops && ops.idpAuthUrl) ? ops.idpAuthUrl : IDP_AUTH_URL
         this.callbackTenantValidation = (ops && typeof ops.forceCallbackTenantValidation == 'boolean') ? ops.forceCallbackTenantValidation : false
         this.idpCallbackUrl = idpCallbackUrl
@@ -190,12 +199,12 @@ export abstract class CortexHubHelper<T extends { [key: string]: string }, U, K 
      * @param scope OAUTH2 Data access Scope(s)
      * @returns a URI ready to be consumed (typically to be used for a client 302 redirect)
      */
-    async idpAuthRequest(tenantId: string, datalakeId: string, scope: OAUTH2SCOPE[]): Promise<URL> {
+    async idpAuthRequest(tenantId: string, datalakeId: string, scope: OAUTH2SCOPE[], metadata: M): Promise<URL> {
         let clientParams = await this.getDatalake(tenantId, datalakeId)
         if (!this.idpCallbackUrl) {
             throw new PanCloudError(CortexCredentialProvider, 'CONFIG', `idpCallbackUrl was not provided in the ops passed to the constructor. Can't request auth without it.`)
         }
-        let stateId = await this.requestAuthState({ tenantId: tenantId, datalakeId: datalakeId })
+        let stateId = await this.requestAuthState({ tenantId: tenantId, datalakeId: datalakeId, metadata: metadata })
         let qsParams: { [index: string]: string } = {
             response_type: 'code',
             client_id: this.clientId,
@@ -234,8 +243,9 @@ export abstract class CortexHubHelper<T extends { [key: string]: string }, U, K 
         }
         let tenantId: string
         let datalakeId: string
+        let metadata: M
         try {
-            ({ tenantId, datalakeId } = await this.restoreAuthState(state))
+            ({ tenantId, datalakeId, metadata } = await this.restoreAuthState(state))
         } catch (e) {
             commonLogger.alert(CortexHubHelper, `Unable to restore state ${state} in callback helper`)
             commonLogger.error(PanCloudError.fromError(CortexHubHelper, e))
@@ -267,7 +277,7 @@ export abstract class CortexHubHelper<T extends { [key: string]: string }, U, K 
                 return
             }
             let reqTenantId = req.user[tKey]
-            if (!(typeof reqTenantId == 'string' && reqTenantId == tenantId)) {
+            if (!(typeof reqTenantId == 'string' && reqTenantId != tenantId)) {
                 commonLogger.alert(CortexHubHelper, `Tenant validation failed: state tenantId ${tenantId} not equal to request tenantId ${JSON.stringify(reqTenantId)}`)
                 callbackStatus = { error: 'tenantId in request does not match the one in the stored state' }
                 req.callbackIdp = callbackStatus
@@ -305,10 +315,11 @@ export abstract class CortexHubHelper<T extends { [key: string]: string }, U, K 
             return
         }
         try {
-            await this.credProvider.issueWithRefreshToken(`${tenantId}@${datalakeId}`,
+            await this.credProvider.issueWithRefreshToken(datalakeId,
                 clientParams.location.entryPoint, idpResponse.refresh_token,
-                { accessToken: idpResponse.access_token, validUntil: idpResponse.validUntil })
-            callbackStatus = { datalakeId: datalakeId }
+                { accessToken: idpResponse.access_token, validUntil: idpResponse.validUntil },
+                { tenantId: tenantId, ...metadata })
+            callbackStatus = { message: 'OK', datalakeId: datalakeId }
             req.callbackIdp = callbackStatus
             next()
         } catch (e) {
@@ -364,7 +375,7 @@ export abstract class CortexHubHelper<T extends { [key: string]: string }, U, K 
      * Retrieves the list of datalakes registered under this tenant
      * @param tenantId requesting Tenant ID
      */
-    async listDatalake(tenantId: string): Promise<{ datalakeId: string, clientParams: CortexClientParams<T> }[]> {
+    async listDatalake(tenantId: string): Promise<({ id: string } & CortexClientParams<T>)[]> {
         let response = await this._listDatalake(tenantId)
         commonLogger.info(CortexHubHelper, `Successfully retrieved list of datalakes for tenant ${tenantId} from store`)
         return response
@@ -405,11 +416,32 @@ export abstract class CortexHubHelper<T extends { [key: string]: string }, U, K 
         commonLogger.info(CortexHubHelper, `Successfully deleted datalake ${tenantId}/${datalakeId} from hub helper`)
     }
 
-    protected abstract _listDatalake(tenantId: string): Promise<{ datalakeId: string, clientParams: CortexClientParams<T> }[]>
+    /**
+     * Abstraction that allows the `CortexHubHelper` subclass implementation reach out its bound `CortexCredentialProvider`
+     * The typical use case if for the `CortexHubHelper` to ask the `CortexCredentialProvider` the list of datalake ID's
+     * it holds (activated) for a given tenant ID
+     * @param tenantId 
+     */
+    async datalakeActiveList(tenantId: string): Promise<string[]> {
+        let activeList = await this.credProvider.selectDatalakeByTenant(tenantId as any)
+        commonLogger.info(CortexHubHelper, `Retrieved ${activeList} items from CredentialProvide for tenantid ${tenantId}`)
+        return activeList
+    }
+
+    async getCredentialsObject(tenantId: string, datalakeId: string): Promise<Credentials> {
+        let activeList = await this.credProvider.selectDatalakeByTenant(tenantId as any)
+        if (!activeList.includes(datalakeId)) {
+            commonLogger.alert(CortexHubHelper, `Attempt request to access the datalake ${datalakeId} not present in ${tenantId} credentials store`)
+            throw new PanCloudError(CortexHubHelper, 'CONFIG', `datalake ${datalakeId} not found`)
+        }
+        return this.credProvider.getCredentialsObject(datalakeId)
+    }
+
+    protected abstract _listDatalake(tenantId: string): Promise<({ id: string } & CortexClientParams<T>)[]>
     protected abstract _getDatalake(tenantId: string, datalakeId: string): Promise<CortexClientParams<T>>
     protected abstract _upsertDatalake(tenantId: string, datalakeId: string, clientParams: CortexClientParams<T>): Promise<void>
     protected abstract _deleteDatalake(tenantId: string, datalakeId: string): Promise<void>
-    protected abstract requestAuthState(stateData: HubIdpStateData): Promise<string>
-    protected abstract restoreAuthState(stateId: string): Promise<HubIdpStateData>
+    protected abstract requestAuthState(stateData: HubIdpStateData<M>): Promise<string>
+    protected abstract restoreAuthState(stateId: string): Promise<HubIdpStateData<M>>
     protected abstract deleteAuthState(stateId: string): Promise<void>
 }

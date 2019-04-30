@@ -20,20 +20,23 @@ const crypto_1 = require("crypto");
 const fs = require("fs");
 function isConfigFile(obj) {
     return typeof obj == 'object' &&
+        obj.metadata &&
         obj.credentialItems && typeof obj.credentialItems == 'object' &&
         Object.entries(obj.credentialItems).every(v => typeof v[0] == 'string' && credentialprovider_1.isCredentialItem(v[1]));
 }
 class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
-    constructor(ops) {
-        super(ops);
+    constructor(ops, tenantKey) {
+        super(ops, tenantKey);
         this.className = 'FsCredProvider';
         this.key = ops.key;
         this.iv = ops.iv;
         this.configFileName = ops.configFileName;
+        this.metadata = {};
     }
     async fullSync() {
         let configFile = {
-            credentialItems: this.credentials
+            credentialItems: this.credentials,
+            metadata: this.metadata
         };
         Object.entries(this.credentials).forEach(v => {
             let aes = crypto_1.createCipheriv('aes128', this.key, this.iv);
@@ -45,7 +48,10 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
         });
         await promifyFs(this, fs.writeFile, this.configFileName, JSON.stringify(configFile, undefined, ' '));
     }
-    createCredentialsItem(datalakeId, credentialsItem) {
+    createCredentialsItem(datalakeId, credentialsItem, metadata) {
+        if (metadata) {
+            this.metadata[datalakeId] = metadata;
+        }
         common_1.commonLogger.info(this, `Lazy implementation of CREATE credentials request for datalake ${datalakeId} with a full synch operation`);
         return this.fullSync();
     }
@@ -56,6 +62,15 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
     deleteCredentialsItem(datalakeId) {
         common_1.commonLogger.info(this, `Lazy implementation of DELETE credentials request for datalake ${datalakeId} with a full synch operation`);
         return this.fullSync();
+    }
+    selectDatalakeByTenant(tenantId) {
+        let matchingDatalakes = Object.keys(this.metadata).filter(datalakeId => {
+            if (this.tenantKey === undefined) {
+                return false;
+            }
+            return this.metadata[datalakeId][this.tenantKey] == tenantId;
+        });
+        return Promise.resolve(matchingDatalakes);
     }
     async loadCredentialsDb() {
         let jsonConfig;
@@ -69,6 +84,7 @@ class FsCredProvider extends credentialprovider_1.CortexCredentialProvider {
         if (!isConfigFile(jsonConfig)) {
             throw new error_1.PanCloudError(this, 'PARSER', `Invalid configuration file format in ${this.configFileName}`);
         }
+        this.metadata = jsonConfig.metadata;
         Object.entries(jsonConfig.credentialItems).forEach(v => {
             let aes = crypto_1.createDecipheriv('aes128', this.key, this.iv);
             let payload = Buffer.concat([aes.update(Buffer.from(v[1].refreshToken, 'base64')), aes.final()]).toString('utf8');
@@ -97,7 +113,7 @@ const CONFIG_FILE = 'PANCLOUD_CONFIG.json';
  * @param ops.envClientSecret environmental variable that keeps the OAUTH2 `client_secret` value in
  * case it is not provided explicitly. Defaults to `{ops.envPrefix}_CLIENT_SECRET`
  */
-async function fsCredentialsFactory(ops) {
+async function fsCredentialsFactory(ops, tenantKey) {
     let { key, iv } = passIvGenerator(ops.secret);
     let ePrefix = (ops && ops.envPrefix) ? ops.envPrefix : ENV_PREFIX;
     let envClientId = `${ePrefix}_CLIENT_ID`;
@@ -119,7 +135,8 @@ async function fsCredentialsFactory(ops) {
     catch (e) {
         common_1.commonLogger.info({ className: 'fsCredProvider' }, `${configFileName} does not exist. Creating it`);
         let blankConfig = {
-            credentialItems: {}
+            credentialItems: {},
+            metadata: {}
         };
         await promifyFs(this, fs.writeFile, configFileName, JSON.stringify(blankConfig));
     }
@@ -129,7 +146,7 @@ async function fsCredentialsFactory(ops) {
     catch (e) {
         throw new error_1.PanCloudError({ className: 'fsCredProvider' }, 'CONFIG', `Invalid permissions in configuration file ${configFileName}`);
     }
-    return new FsCredProvider(Object.assign({ clientId: cId, clientSecret: cSec, key: key, iv: iv, configFileName: configFileName }, ops));
+    return new FsCredProvider(Object.assign({ clientId: cId, clientSecret: cSec, key: key, iv: iv, configFileName: configFileName }, ops), tenantKey);
 }
 exports.fsCredentialsFactory = fsCredentialsFactory;
 function passIvGenerator(secret) {

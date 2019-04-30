@@ -19,6 +19,7 @@ const common_1 = require("./common");
 const emitter_1 = require("./emitter");
 const error_1 = require("./error");
 const timers_1 = require("timers");
+const events_1 = require("events");
 /**
  * Default delay (in milliseconds) between successive polls (auto-poll feature). It can be overrided in the
  * function signature
@@ -78,6 +79,10 @@ class LoggingService extends emitter_1.Emitter {
         this.jobQueue = {};
         this.lastProcElement = 0;
         this.pendingQueries = [];
+        if (ops && ops.controlListener) {
+            this.controlEmitter = new events_1.EventEmitter();
+            this.controlEmitter.addListener('on', ops.controlListener);
+        }
         this.stats = Object.assign({ records: 0, deletes: 0, polls: 0, queries: 0, writes: 0 }, this.stats);
     }
     /**
@@ -146,6 +151,16 @@ class LoggingService extends emitter_1.Emitter {
                 });
                 this.pendingQueries = Object.keys(this.jobQueue);
                 this.eventEmitter(rJson);
+                if (rJson.result.esResult) {
+                    if (this.controlEmitter) {
+                        let ctrlMessage = {
+                            lastKnownStatus: rJson.queryStatus,
+                            queryId: rJson.queryId,
+                            totalHits: rJson.result.esResult.hits.total
+                        };
+                        this.controlEmitter.emit('on', ctrlMessage);
+                    }
+                }
                 if (rJson.queryStatus == "JOB_FINISHED") {
                     let jobResolver = this.jobQueue[rJson.queryId].resolve;
                     this.emitterCleanup(rJson);
@@ -208,7 +223,7 @@ class LoggingService extends emitter_1.Emitter {
         let jobR = {
             queryId: "",
             queryStatus: "RUNNING",
-            result: { esResult: null },
+            result: {},
             sequenceNo: 0,
             clientParameters: {}
         };
@@ -220,6 +235,16 @@ class LoggingService extends emitter_1.Emitter {
             }
             else {
                 ls.eventEmitter(jobR);
+                if (jobR.result.esResult) {
+                    if (ls.controlEmitter) {
+                        let ctrlMessage = {
+                            lastKnownStatus: jobR.queryStatus,
+                            queryId: jobR.queryId,
+                            totalHits: jobR.result.esResult.hits.total
+                        };
+                        ls.controlEmitter.emit('on', ctrlMessage);
+                    }
+                }
                 if (jobR.queryStatus == "FINISHED") {
                     currentJob.sequenceNo++;
                 }

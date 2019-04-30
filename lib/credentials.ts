@@ -68,7 +68,7 @@ export abstract class Credentials implements PancloudClass {
      * Checks the access token expiration time and automaticaly refreshes it if going to expire
      * inside the next 5 minutes
      */
-    public async autoRefresh(): Promise<boolean> {
+    public async autoRefresh(): Promise<number> {
         if (!this.accessToken) {
             await this.retrieveAccessToken()
         }
@@ -76,12 +76,12 @@ export abstract class Credentials implements PancloudClass {
             try {
                 commonLogger.info(this, 'Cached access token about to expire. Requesting a new one.')
                 await this.retrieveAccessToken()
-                return true
+                return this.validUntil
             } catch {
                 commonLogger.info(this, 'Failed to get a new access token')
             }
         }
-        return false
+        return this.validUntil
     }
 
     /**

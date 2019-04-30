@@ -115,13 +115,19 @@ export interface JobResult {
     queryStatus: jobStatus;
     clientParameters: any;
     result: {
-        esResult: null | {
+        esResult?: {
             hits: {
                 hits: {
                     _index: string;
                     _type: string;
                     _source: any;
                 }[];
+                total?: number;
+            };
+            response?: {
+                result: {
+                    aggregations?: any;
+                };
             };
         };
     };
@@ -144,6 +150,11 @@ interface WriteResult {
      */
     uuids: string[];
 }
+export interface LsControlMessage {
+    queryId: string;
+    lastKnownStatus: jobStatus;
+    totalHits?: number;
+}
 /**
  * Options for the LoggingService class factory
  */
@@ -152,6 +163,7 @@ export interface LsOptions extends EmitterOptions {
      * Amount of milliseconds to wait between consecutive autopoll() attempts. Defaults to **200ms**
      */
     autoPollSleep?: number;
+    controlListener?: (message: LsControlMessage) => void;
 }
 /**
  * High-level class that implements an Application Framework Logging Service client. It supports both sync
@@ -164,6 +176,7 @@ export declare class LoggingService extends Emitter {
     private jobQueue;
     private lastProcElement;
     private pendingQueries;
+    private controlEmitter?;
     protected stats: LsStats;
     /**
      * Private constructor. Use the class's static `factory()` method instead
