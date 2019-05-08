@@ -263,20 +263,15 @@ class CortexCredentialProvider {
         }
         let credentials = this.credentials[datalakeId];
         if (Date.now() + this.accTokenGuardTime * 1000 > credentials.validUntil * 1000) {
-            try {
-                common_1.commonLogger.info(CortexCredentialProvider, 'Asking for a new access_token');
-                let idpResponse = await this.refreshAccessToken(credentials.refreshToken);
-                credentials.accessToken = idpResponse.access_token;
-                credentials.validUntil = idpResponse.validUntil;
-                if (idpResponse.refresh_token) {
-                    credentials.refreshToken = idpResponse.refresh_token;
-                    common_1.commonLogger.info(CortexCredentialProvider, 'Received new Cortex Refresh Token');
-                }
-                await this.updateCredentialsItem(datalakeId, credentials);
+            common_1.commonLogger.info(CortexCredentialProvider, 'Asking for a new access_token');
+            let idpResponse = await this.refreshAccessToken(credentials.refreshToken);
+            credentials.accessToken = idpResponse.access_token;
+            credentials.validUntil = idpResponse.validUntil;
+            if (idpResponse.refresh_token) {
+                credentials.refreshToken = idpResponse.refresh_token;
+                common_1.commonLogger.info(CortexCredentialProvider, 'Received new Cortex Refresh Token');
             }
-            catch (_a) {
-                common_1.commonLogger.info(CortexCredentialProvider, 'Failed to get a new access token');
-            }
+            await this.updateCredentialsItem(datalakeId, credentials);
         }
         return {
             accessToken: credentials.accessToken,
