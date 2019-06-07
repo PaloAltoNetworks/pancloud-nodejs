@@ -22,8 +22,8 @@ export async function autoCredentials(opt?: CredentialProviderOptions & DevToken
 { accessToken?: string, refreshToken?: string, entryPoint?: EntryPoint }): Promise<Credentials> {
     let envClientId = env['PAN_CLIENT_ID']
     let envClientSecret = env['PAN_CLIENT_SECRET']
-    let envRefreshToken = env['PAN_REFRESH_TOKEN']
-    let envAccessToken = env['PAN_ACCESS_TOKEN']
+    let envRefreshToken = (opt && opt.refreshToken) || env['PAN_REFRESH_TOKEN']
+    let envAccessToken = (opt && opt.accessToken) || env['PAN_ACCESS_TOKEN']
     let envEntryPoint = env['PAN_ENTRYPOINT']
 
     let entryPoint: EntryPoint = 'https://api.us.paloaltonetworks.com'
