@@ -7,7 +7,13 @@
         "module": "commonjs",
         "moduleResolution": "node",
         "baseUrl": ".",
-        "outDir": "dist"
+        "outDir": "dist",
+        "types": [
+            "node"
+        ],
+        "lib": [
+            "es2017"
+        ]
     },
     "include": [
         "lib/*.ts"

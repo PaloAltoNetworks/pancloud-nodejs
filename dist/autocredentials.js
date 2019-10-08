@@ -21,8 +21,8 @@ const process_1 = require("process");
 async function autoCredentials(opt) {
     let envClientId = process_1.env['PAN_CLIENT_ID'];
     let envClientSecret = process_1.env['PAN_CLIENT_SECRET'];
-    let envRefreshToken = process_1.env['PAN_REFRESH_TOKEN'];
-    let envAccessToken = process_1.env['PAN_ACCESS_TOKEN'];
+    let envRefreshToken = (opt && opt.refreshToken) || process_1.env['PAN_REFRESH_TOKEN'];
+    let envAccessToken = (opt && opt.accessToken) || process_1.env['PAN_ACCESS_TOKEN'];
     let envEntryPoint = process_1.env['PAN_ENTRYPOINT'];
     let entryPoint = 'https://api.us.paloaltonetworks.com';
     if (envEntryPoint) {
