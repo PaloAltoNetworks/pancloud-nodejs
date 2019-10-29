@@ -176,7 +176,8 @@ export declare abstract class CortexHubHelper<T extends {
      */
     listDatalake(tenantId: string): Promise<({
         id: string;
-    } & CortexClientParams<T>)[]>;
+        doc: CortexClientParams<T>;
+    })[]>;
     /**
      * Gets metadata of a given Datalake ID as a `CortexClientParams` object
      * @param tenantId requesting Tenant ID
@@ -206,7 +207,8 @@ export declare abstract class CortexHubHelper<T extends {
     getCredentialsObject(tenantId: string, datalakeId: string): Promise<Credentials>;
     protected abstract _listDatalake(tenantId: string): Promise<({
         id: string;
-    } & CortexClientParams<T>)[]>;
+        doc: CortexClientParams<T>;
+    })[]>;
     protected abstract _getDatalake(tenantId: string, datalakeId: string): Promise<CortexClientParams<T>>;
     protected abstract _upsertDatalake(tenantId: string, datalakeId: string, clientParams: CortexClientParams<T>): Promise<void>;
     protected abstract _deleteDatalake(tenantId: string, datalakeId: string): Promise<void>;
