@@ -61,7 +61,6 @@ export class LoggingServiceClient extends Readable {
         else this.state = readableStates.READY
     }
 
-
     constructor(ls: LoggingService, cfg: LsQueryCfg & { retries?: number, delay?: number }, opts?: ReadableOptions) {
         super({ ...opts, objectMode: true })
         this.ls = ls
