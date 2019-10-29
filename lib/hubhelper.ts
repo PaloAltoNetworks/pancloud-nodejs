@@ -375,7 +375,7 @@ export abstract class CortexHubHelper<T extends { [key: string]: string }, U, K 
      * Retrieves the list of datalakes registered under this tenant
      * @param tenantId requesting Tenant ID
      */
-    async listDatalake(tenantId: string): Promise<({ id: string } & CortexClientParams<T>)[]> {
+    async listDatalake(tenantId: string): Promise<({ id: string, doc: CortexClientParams<T> })[]> {
         let response = await this._listDatalake(tenantId)
         commonLogger.info(CortexHubHelper, `Successfully retrieved list of datalakes for tenant ${tenantId} from store`)
         return response
@@ -437,7 +437,7 @@ export abstract class CortexHubHelper<T extends { [key: string]: string }, U, K 
         return this.credProvider.getCredentialsObject(datalakeId)
     }
 
-    protected abstract _listDatalake(tenantId: string): Promise<({ id: string } & CortexClientParams<T>)[]>
+    protected abstract _listDatalake(tenantId: string): Promise<({ id: string, doc: CortexClientParams<T> })[]>
     protected abstract _getDatalake(tenantId: string, datalakeId: string): Promise<CortexClientParams<T>>
     protected abstract _upsertDatalake(tenantId: string, datalakeId: string, clientParams: CortexClientParams<T>): Promise<void>
     protected abstract _deleteDatalake(tenantId: string, datalakeId: string): Promise<void>
